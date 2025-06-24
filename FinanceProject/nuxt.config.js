@@ -17,8 +17,17 @@ export default {
   },
 
   // Global CSS: https://go.nuxtjs.dev/config-css
-  css: [
-  ],
+  css: [['@/assets/css/tailwind.css'],
+  ],runtimeConfig: {
+    public: {
+      liffId: process.env.VITE_LIFF_ID
+    }
+  },
+  app: {
+    head: {
+      title: 'Payslip Viewer'
+    }
+  },
 
   // Plugins to run before rendering page: https://go.nuxtjs.dev/config-plugins
   plugins: [
