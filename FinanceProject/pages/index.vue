@@ -105,18 +105,17 @@ onMounted(async () => {
 });
 
 const getSlip = async () => {
-  const res = await fetch("http://localhost:8000/api/get-slip", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const res = await fetch('http://localhost:8000/api/get-slip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       account: account.value,
-      month: month.value,
-      year: year.value,
-    }),
-  });
-
-  const data = await res.json();
-  pdfUrl.value = data.url;
+      month: selectedMonth.value,
+      year: selectedYear.value
+    })
+  })
+  const data = await res.json()
+  pdfUrl.value = data.url
 };
 
 // Handle PDF file selection
