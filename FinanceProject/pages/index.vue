@@ -65,27 +65,12 @@ const file = ref(null);
 const uploadMessage = ref("");
 const isAdminUser = ref(false);
 
-const monthMap = {
-  มกราคม: "01",
-  กุมภาพันธ์: "02",
-  มีนาคม: "03",
-  เมษายน: "04",
-  พฤษภาคม: "05",
-  มิถุนายน: "06",
-  กรกฎาคม: "07",
-  สิงหาคม: "08",
-  กันยายน: "09",
-  ตุลาคม: "10",
-  พฤศจิกายน: "11",
-  ธันวาคม: "12",
-};
-const years = ["2567", "2568"];
-
 onMounted(async () => {
   await $liffInit;
 
   if (!$liff.isLoggedIn()) {
-    $liff.login({ redirectUri: window.location.href });
+    // $liff.login({ redirectUri: window.location.href });
+    $liff.login();
     return;
   }
 
