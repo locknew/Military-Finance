@@ -20,7 +20,8 @@ export default {
   css: [['@/assets/css/tailwind.css'],
   ],runtimeConfig: {
     public: {
-      liffId: process.env.VITE_LIFF_ID
+      liffId: process.env.VITE_LIFF_ID,
+      liffRedirectUri: 'https://financepj.netlify.app',
     }
   },
   app: {
