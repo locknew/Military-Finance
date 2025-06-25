@@ -66,7 +66,7 @@ const uploadMessage = ref("");
 const isAdminUser = ref(false);
 
 onMounted(async () => {
-  await $liffInit;
+  await liff.init({ liffId: import.meta.env.VITE_LIFF_ID })
 
   if (!$liff.isLoggedIn()) {
     // $liff.login({ redirectUri: window.location.href });
