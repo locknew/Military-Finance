@@ -1,11 +1,35 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
+import base64
+import json
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+
 from pdf_splitter import split_and_upload
-from drive_utils import drive_service, get_or_create_folder
+from drive_utils import get_or_create_folder
+
+# Setup Flask app
 app = Flask(__name__)
 CORS(app)
+
+# Google Drive root folder ID
 ROOT_FOLDER_ID = '1zcL_hN8n4QyoL2Uo9bd9nWyLZJuKhbow'
+
+# Load and decode service account from environment variable
+service_account_info = json.loads(
+    base64.b64decode(os.environ['GOOGLE_SERVICE_ACCOUNT'])
+)
+
+# Create Google Drive credentials
+creds = service_account.Credentials.from_service_account_info(
+    service_account_info,
+    scopes=['https://www.googleapis.com/auth/drive']
+)
+
+# Build the Google Drive service
+drive_service = build('drive', 'v3', credentials=creds)
 
 @app.route('/api/upload-slip', methods=['POST'])
 def upload_slip():
@@ -18,7 +42,7 @@ def upload_slip():
     file.save(temp_path)
 
     try:
-        result, year, month = split_and_upload(temp_path)
+        result, year, month = split_and_upload(temp_path, drive_service, ROOT_FOLDER_ID)
         return jsonify({
             'message': 'Upload success',
             'files': result,
@@ -37,13 +61,9 @@ def get_slip():
     filename = f"{account}.pdf"
 
     try:
-        # Step 1: Find the year folder
-        year_folder_id = get_or_create_folder(year)
+        year_folder_id = get_or_create_folder(drive_service, year, parent_id=ROOT_FOLDER_ID)
+        month_folder_id = get_or_create_folder(drive_service, month, parent_id=year_folder_id)
 
-        # Step 2: Find the month folder inside the year
-        month_folder_id = get_or_create_folder(month, parent_id=year_folder_id)
-
-        # Step 3: Search for the file in month folder
         query = (
             f"name = '{filename}' and "
             f"'{month_folder_id}' in parents and "
@@ -62,7 +82,7 @@ def get_slip():
 
     except Exception as e:
         return jsonify({'message': f'เกิดข้อผิดพลาด: {str(e)}'}), 500
-    
+
 @app.route('/api/available-months', methods=['GET'])
 def get_available_months():
     try:
@@ -86,7 +106,7 @@ def get_available_months():
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 
+# Run app (Render will auto use host='0.0.0.0' and the correct PORT)
 port = int(os.environ.get('PORT', 8000))
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=port)
