@@ -51,7 +51,7 @@
 
 <script setup>
 import { ref, onMounted } from "vue";
-import isAdmin from '@utils/isadmin';
+import isAdmin from '@/utils/isAdmin';
 
 const { $liff, $liffInit } = useNuxtApp();
 
