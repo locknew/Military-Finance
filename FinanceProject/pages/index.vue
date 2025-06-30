@@ -79,7 +79,7 @@ onMounted(async () => {
     isAdminUser.value = true;
   }
   // Fetch dynamic year-month map
-  const res = await fetch("http://localhost:8000/api/available-months");
+  const res = await fetch("locknew.pythonanywhere.com/api/available-months");
   const data = await res.json();
   availableYears.value = Object.keys(data);
 
@@ -90,7 +90,7 @@ onMounted(async () => {
 });
 
 const getSlip = async () => {
-  const res = await fetch('http://localhost:8000/api/get-slip', {
+  const res = await fetch('locknew.pythonanywhere.com/api/get-slip', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -118,7 +118,7 @@ const uploadPDF = async () => {
   const formData = new FormData();
   formData.append("file", file.value);
 
-  const res = await fetch("http://localhost:8000/api/upload-slip", {
+  const res = await fetch("locknew.pythonanywhere.com/api/upload-slip", {
     method: "POST",
     body: formData,
   });
