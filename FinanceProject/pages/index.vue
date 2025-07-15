@@ -1,17 +1,19 @@
 <template>
-  <div class="min-h-screen bg-military-gradient flex items-center justify-center p-5">
+  <div
+    class="min-h-screen bg-military-gradient flex items-center justify-center p-5"
+  >
     <!-- Login Screen -->
-    <div v-if="!isLoggedIn" class="login-container fade-in">
+    <div v-if="isLoggedIn" class="login-container fade-in">
       <div class="login-header">
         <div class="login-icon">🪖</div>
         <h1 class="login-title">ระบบสลิปเงินเดือนทหาร</h1>
         <p class="login-subtitle">เข้าสู่ระบบด้วย LINE</p>
       </div>
-      
+
       <button @click="handleLogin" class="login-btn" :disabled="isLoggingIn">
         <span v-if="isLoggingIn" class="spinner"></span>
         <span v-else>💬</span>
-        {{ isLoggingIn ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบด้วย LINE' }}
+        {{ isLoggingIn ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบด้วย LINE" }}
       </button>
     </div>
 
@@ -25,9 +27,9 @@
 
       <div class="form-group">
         <label class="form-label">เลขบัญชี</label>
-        <input 
-          v-model="account" 
-          placeholder="กรอกเลขบัญชีของคุณ" 
+        <input
+          v-model="account"
+          placeholder="กรอกเลขบัญชีของคุณ"
           class="input"
           type="text"
         />
@@ -42,8 +44,12 @@
               {{ y }}
             </option>
           </select>
-          
-          <select v-model="selectedMonth" class="input" :disabled="!selectedYear">
+
+          <select
+            v-model="selectedMonth"
+            class="input"
+            :disabled="!selectedYear"
+          >
             <option value="">เลือกเดือน</option>
             <option v-for="m in availableMonths" :key="m" :value="m">
               {{ m }}
@@ -55,7 +61,7 @@
       <button @click="getSlip" class="btn" :disabled="loading">
         <span v-if="loading" class="loading"></span>
         <span v-else>📥</span>
-        {{ loading ? 'กำลังโหลด...' : 'แสดงสลิปเงินเดือน' }}
+        {{ loading ? "กำลังโหลด..." : "แสดงสลิปเงินเดือน" }}
       </button>
 
       <div v-if="pdfUrl" class="pdf-container slide-up">
@@ -63,34 +69,78 @@
       </div>
 
       <!-- Admin Section -->
-      <div v-if="isAdminUser" class="admin-section slide-up">
+      <div v-if="!isAdminUser" class="admin-section slide-up">
         <div class="admin-header">
           <h3 class="admin-title">อัปโหลดไฟล์ PDF</h3>
           <span class="admin-badge">ADMIN</span>
         </div>
-        
+
         <div class="form-group">
           <div class="file-input">
-            <input 
-              type="file" 
-              id="file-upload" 
-              accept="application/pdf"
+            <input
+              id="file-upload"
+              type="file"
+              accept=".pdf"
               @change="handleFileUpload"
+              ref="fileInput"
+              class="hidden"
             />
             <label for="file-upload" class="file-input-label">
               📄 คลิกเพื่อเลือกไฟล์ PDF
             </label>
           </div>
+
+          <!-- File preview -->
+          <div v-if="selectedFile" class="file-preview">
+            <div class="file-info">
+              <span class="file-name">{{ selectedFile.name }}</span>
+              <span class="file-size">({{ formatFileSize(selectedFile.size) }})</span>
+            </div>
+            <button @click="clearFile" class="clear-btn">✕</button>
+          </div>
         </div>
 
-        <button @click="uploadPDF" class="btn" :disabled="uploadLoading">
+        <button
+          @click="uploadPDF"
+          class="btn"
+          :disabled="uploadLoading || !selectedFile"
+        >
           <span v-if="uploadLoading" class="loading"></span>
           <span v-else>🚀</span>
-          {{ uploadLoading ? 'กำลังอัปโหลด...' : 'อัปโหลด' }}
+          {{ uploadLoading ? "กำลังอัปโหลด..." : "อัปโหลด" }}
         </button>
 
         <div v-if="uploadMessage" class="success-message">
           {{ uploadMessage }}
+        </div>
+
+        <div v-if="uploadUrl" class="success-message">
+          ✅ ไฟล์อัปโหลดแล้ว:
+          <a :href="uploadUrl" target="_blank" class="underline text-blue-600">
+            {{ uploadUrl }}
+          </a>
+        </div>
+
+        <div v-if="uploadError" class="error-message">
+          ❌ {{ uploadError }}
+        </div>
+
+        <!-- File list section -->
+        <div v-if="uploadedFiles.length > 0" class="uploaded-files-section">
+          <h4 class="files-title">ไฟล์ที่อัปโหลดแล้ว</h4>
+          <div class="files-list">
+            <div v-for="file in uploadedFiles" :key="file.name" class="file-item">
+              <div class="file-details">
+                <span class="file-name">{{ file.name }}</span>
+                <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                <span class="file-date">{{ formatDate(file.uploadedAt) }}</span>
+              </div>
+              <div class="file-actions">
+                <a :href="file.url" target="_blank" class="view-btn">👁️</a>
+                <button @click="deleteFile(file.name)" class="delete-btn">🗑️</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -99,18 +149,18 @@
 
 <script setup>
 import { ref, onMounted, watch } from "vue";
-import { isAdmin } from '@/utils/isAdmin';
+import { isAdmin } from "@/utils/isAdmin";
 
 const { $liff } = useNuxtApp();
-
 const account = ref("");
 const availableYears = ref([]);
 const availableMonths = ref([]);
 const selectedYear = ref("");
 const selectedMonth = ref("");
 const pdfUrl = ref("");
-const file = ref(null);
 const uploadMessage = ref("");
+const uploadError = ref("");
+const uploadUrl = ref("");
 const isAdminUser = ref(false);
 const loading = ref(false);
 const uploadLoading = ref(false);
@@ -118,47 +168,54 @@ const isLoggedIn = ref(false);
 const isLoggingIn = ref(false);
 const userProfile = ref(null);
 
+// File upload related
+const selectedFile = ref(null);
+const fileInput = ref(null);
+const uploadedFiles = ref([]);
+
 onMounted(async () => {
   try {
     // Initialize LIFF
-    await $liff.init({ 
-      liffId: import.meta.env.VITE_LIFF_ID 
+    await $liff.init({
+      liffId: import.meta.env.VITE_LIFF_ID,
     });
 
     if ($liff.isLoggedIn()) {
       isLoggedIn.value = true;
-      
+
       // Get user profile
       userProfile.value = await $liff.getProfile();
-      
+
       // Check if user is admin
       if (isAdmin(userProfile.value.userId)) {
         isAdminUser.value = true;
+        // Load uploaded files for admin
+        await loadUploadedFiles();
       }
-      
+
       // Fetch available months
       await fetchAvailableMonths();
     }
   } catch (error) {
-    console.error('LIFF initialization failed:', error);
-    // Handle LIFF initialization failure
+    console.error("LIFF initialization failed:", error);
   }
 });
 
 const handleLogin = async () => {
   isLoggingIn.value = true;
-  
   try {
     $liff.login();
   } catch (error) {
-    console.error('Login failed:', error);
+    console.error("Login failed:", error);
     isLoggingIn.value = false;
   }
 };
 
 const fetchAvailableMonths = async () => {
   try {
-    const res = await fetch("https://locknew.pythonanywhere.com/api/available-months");
+    const res = await fetch(
+      "https://locknew.pythonanywhere.com/api/available-months"
+    );
     const data = await res.json();
     availableYears.value = Object.keys(data);
 
@@ -167,86 +224,184 @@ const fetchAvailableMonths = async () => {
       selectedMonth.value = "";
     });
   } catch (error) {
-    console.error('Error fetching available months:', error);
+    console.error("Error fetching available months:", error);
     // Fallback data
-    availableYears.value = ['2024', '2023', '2022', '2021'];
+    availableYears.value = ["2024", "2023", "2022", "2021"];
   }
 };
 
 const getSlip = async () => {
   if (!account.value || !selectedYear.value || !selectedMonth.value) {
-    alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+    alert("กรุณากรอกข้อมูลให้ครบถ้วน");
     return;
   }
 
   loading.value = true;
-  
+
   try {
-    const res = await fetch('https://locknew.pythonanywhere.com/api/get-slip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch("https://locknew.pythonanywhere.com/api/get-slip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         account: account.value,
         month: selectedMonth.value,
-        year: selectedYear.value
-      })
+        year: selectedYear.value,
+      }),
     });
     const data = await res.json();
     pdfUrl.value = data.url;
   } catch (error) {
-    console.error('Error fetching slip:', error);
-    alert('เกิดข้อผิดพลาดในการดึงสลิป');
+    console.error("Error fetching slip:", error);
+    alert("เกิดข้อผิดพลาดในการดึงสลิป");
   } finally {
     loading.value = false;
   }
 };
 
-const handleFileUpload = (e) => {
-  file.value = e.target.files[0];
+const handleFileUpload = (event) => {
+  const file = event.target.files[0];
+  
+  if (file) {
+    // Validate file type
+    if (file.type !== 'application/pdf') {
+      uploadError.value = 'กรุณาเลือกไฟล์ PDF เท่านั้น';
+      return;
+    }
+    
+    // Validate file size (10MB max)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      uploadError.value = 'ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 10MB)';
+      return;
+    }
+    
+    selectedFile.value = file;
+    uploadError.value = '';
+    uploadMessage.value = '';
+    uploadUrl.value = '';
+  }
+};
+
+const clearFile = () => {
+  selectedFile.value = null;
+  uploadMessage.value = '';
+  uploadUrl.value = '';
+  uploadError.value = '';
+  if (fileInput.value) {
+    fileInput.value.value = '';
+  }
 };
 
 const uploadPDF = async () => {
-  if (!file.value) {
-    uploadMessage.value = "⚠️ กรุณาเลือกไฟล์ PDF ก่อน";
+  if (!selectedFile.value) {
+    uploadError.value = 'กรุณาเลือกไฟล์ PDF';
     return;
   }
 
   uploadLoading.value = true;
-  
-  try {
-    const formData = new FormData();
-    formData.append("file", file.value);
+  uploadError.value = '';
+  uploadMessage.value = '';
+  uploadUrl.value = '';
 
-    const res = await fetch("https://locknew.pythonanywhere.com/api/upload-slip", {
-      method: "POST",
-      body: formData,
+  try {
+    // Create FormData for file upload
+    const formData = new FormData();
+    formData.append('file', selectedFile.value);
+    formData.append('uploadedBy', userProfile.value.userId);
+    formData.append('uploadedAt', new Date().toISOString());
+
+    // Upload to Nuxt server API
+    const response = await $fetch('/api/upload/pdf', {
+      method: 'POST',
+      body: formData
     });
 
-    const result = await res.json();
-    if (res.ok) {
-      uploadMessage.value = "✅ อัปโหลดเรียบร้อยแล้ว!";
+    if (response.success) {
+      uploadMessage.value = 'อัปโหลดไฟล์สำเร็จ!';
+      uploadUrl.value = response.url;
+      
+      // Reload uploaded files list
+      await loadUploadedFiles();
+      
+      // Clear the form after successful upload
+      setTimeout(() => {
+        clearFile();
+      }, 2000);
     } else {
-      uploadMessage.value = `❌ อัปโหลดล้มเหลว: ${
-        result.message || "ไม่ทราบสาเหตุ"
-      }`;
+      throw new Error(response.error || 'เกิดข้อผิดพลาดในการอัปโหลด');
     }
+
   } catch (error) {
     console.error('Upload error:', error);
-    uploadMessage.value = "❌ เกิดข้อผิดพลาดในการอัปโหลด";
+    uploadError.value = error.message || 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์';
   } finally {
     uploadLoading.value = false;
-    
-    // Clear message after 3 seconds
-    setTimeout(() => {
-      uploadMessage.value = "";
-    }, 3000);
   }
 };
-</script>
 
+const loadUploadedFiles = async () => {
+  try {
+    const response = await $fetch('/api/files/list');
+    uploadedFiles.value = response.files || [];
+  } catch (error) {
+    console.error('Error loading files:', error);
+  }
+};
+
+const deleteFile = async (filename) => {
+  if (!confirm('คุณแน่ใจหรือไม่ที่จะลบไฟล์นี้?')) {
+    return;
+  }
+
+  try {
+    await $fetch(`/api/files/delete?filename=${encodeURIComponent(filename)}`, {
+      method: 'DELETE'
+    });
+    
+    // Remove from local list
+    uploadedFiles.value = uploadedFiles.value.filter(file => file.name !== filename);
+    
+    // Show success message
+    uploadMessage.value = 'ลบไฟล์สำเร็จ!';
+    setTimeout(() => {
+      uploadMessage.value = '';
+    }, 3000);
+    
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    uploadError.value = 'เกิดข้อผิดพลาดในการลบไฟล์';
+  }
+};
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('th-TH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+</script>
 <style scoped>
 .bg-military-gradient {
-  background: linear-gradient(135deg, #2d5016 0%, #3e6b2b 25%, #4a7c3a 50%, #5a8b4a 75%, #6aa85a 100%);
+  background: linear-gradient(
+    135deg,
+    #2d5016 0%,
+    #3e6b2b 25%,
+    #4a7c3a 50%,
+    #5a8b4a 75%,
+    #6aa85a 100%
+  );
 }
 
 .login-container {
@@ -484,7 +639,7 @@ const uploadPDF = async () => {
   width: 100%;
 }
 
-.file-input input[type=file] {
+.file-input input[type="file"] {
   position: absolute;
   left: -9999px;
 }
@@ -505,6 +660,34 @@ const uploadPDF = async () => {
 .file-input-label:hover {
   background: #edf2f7;
   border-color: #a0aec0;
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f7fafc;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.file-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #2d3748;
+  font-size: 14px;
+}
+
+.file-size {
+  color: #718096;
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .success-message {
