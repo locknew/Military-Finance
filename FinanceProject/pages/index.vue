@@ -311,7 +311,7 @@ const uploadPDF = async () => {
     formData.append('uploadedAt', new Date().toISOString());
 
     // Upload to Nuxt server API
-    const response = await $fetch('/api/upload/pdf', {
+    const response = await $fetch('/api/upload-slip', {
       method: 'POST',
       body: formData
     });
