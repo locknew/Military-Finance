@@ -3,7 +3,7 @@
     class="min-h-screen bg-military-gradient flex items-center justify-center p-5"
   >
     <!-- Login Screen -->
-    <div v-if="isLoggedIn" class="login-container fade-in">
+    <div v-if="!isLoggedIn" class="login-container fade-in">
       <div class="login-header">
         <div class="login-icon">🪖</div>
         <h1 class="login-title">ระบบสลิปเงินเดือนทหาร</h1>
@@ -69,7 +69,7 @@
       </div>
 
       <!-- Admin Section -->
-      <div v-if="!isAdminUser" class="admin-section slide-up">
+      <div v-if="isAdminUser" class="admin-section slide-up">
         <div class="admin-header">
           <h3 class="admin-title">อัปโหลดไฟล์ PDF</h3>
           <span class="admin-badge">ADMIN</span>
