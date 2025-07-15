@@ -3,9 +3,12 @@ from flask_cors import CORS
 import os
 import base64
 import json
-
+from dotenv import load_dotenv
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import pickle
 
 from pdf_splitter import split_and_upload
 from drive_utils import get_or_create_folder
@@ -13,23 +16,36 @@ from drive_utils import get_or_create_folder
 # Setup Flask app
 app = Flask(__name__)
 CORS(app)
-
+load_dotenv()
 # Google Drive root folder ID
-ROOT_FOLDER_ID = '1zcL_hN8n4QyoL2Uo9bd9nWyLZJuKhbow'
+ROOT_FOLDER_ID = '1uJ9aRF5VQewAZQDqZ_nt1SOoOFHNTgpl'
 
-# Load and decode service account from environment variable
-service_account_info = json.loads(
-    base64.b64decode(os.environ['GOOGLE_SERVICE_ACCOUNT'])
-)
+def get_drive_service():
+    creds = None
 
-# Create Google Drive credentials
-creds = service_account.Credentials.from_service_account_info(
-    service_account_info,
-    scopes=['https://www.googleapis.com/auth/drive']
-)
+    # Load token if exists
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
 
-# Build the Google Drive service
-drive_service = build('drive', 'v3', credentials=creds)
+    # If no valid credentials, authenticate
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json',
+                scopes=['https://www.googleapis.com/auth/drive.file']
+            )
+            creds = flow.run_local_server(port=8080)  # <-- must be inside else
+
+        # Save token
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+
+    return build('drive', 'v3', credentials=creds)
+# Initialize drive client once
+drive_service = get_drive_service()
 
 @app.route('/api/upload-slip', methods=['POST'])
 def upload_slip():
@@ -51,6 +67,7 @@ def upload_slip():
         })
     except Exception as e:
         return jsonify({'message': str(e)}), 500
+
 
 @app.route('/api/get-slip', methods=['POST'])
 def get_slip():
@@ -110,3 +127,4 @@ def get_available_months():
 port = int(os.environ.get('PORT', 8000))
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=port)
+drive_service = get_drive_service()

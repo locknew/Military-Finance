@@ -140,7 +140,7 @@ def upload_to_drive(filepath, year, month, root_folder_id=None):
 
 
 # Example usage:
-input_pdf = "สลีป พ.ค.68.pdf"
+input_pdf = "C:\Users\bangb\Desktop\S_PROJECT\BackEnd\uploads\สลีป มิ.ย.68.pdf"
 output_folder = "split_named_pdfs"
 split_and_save_named_pdfs(input_pdf, output_folder)
 

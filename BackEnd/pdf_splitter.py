@@ -15,7 +15,10 @@ THAI_MONTH_MAP = {
 RANK_PATTERN = '|'.join(RANKS)
 
 def extract_month_year_from_text(text):
-    pattern = r"(" + "|".join(THAI_MONTH_MAP.keys()) + r")\s*(\d{4})"
+    # Normalize whitespace and newlines
+    text = text.replace('\n', ' ').replace('\r', ' ')
+
+    pattern = r"(" + "|".join(THAI_MONTH_MAP.keys()) + r")\s*(?:ปี\s*พ\.ศ\.)?\s*(\d{4})"
     match = re.search(pattern, text)
     if match:
         month_th = match.group(1)
@@ -23,12 +26,13 @@ def extract_month_year_from_text(text):
         return year_be, THAI_MONTH_MAP[month_th]
     raise ValueError("ไม่พบเดือนหรือปีในไฟล์ PDF")
 
+
 def extract_account(page):
     text = page.get_text()
     match = re.search(r"\d{10,}", text)
     return match.group(0) if match else None
 
-def split_and_upload(pdf_path):
+def split_and_upload(pdf_path, drive_service, root_folder_id):
     doc = fitz.open(pdf_path)
     text_sample = "".join([doc[i].get_text() for i in range(min(3, len(doc)))])
     year, month = extract_month_year_from_text(text_sample)
@@ -59,7 +63,7 @@ def split_and_upload(pdf_path):
             new_doc.save(file_path)
             new_doc.close()
 
-            file_id = upload_pdf(file_path, year, month)
+            file_id = upload_pdf(drive_service, file_path, year, month, root_folder_id)
             uploaded_files[acc] = file_id
 
     return uploaded_files, year, month
