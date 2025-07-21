@@ -213,20 +213,22 @@ const handleLogin = async () => {
 
 const fetchAvailableMonths = async () => {
   try {
-    const res = await fetch(
-      "https://locknew.pythonanywhere.com/api/available-months"
-    );
+    const res = await fetch("https://locknew.pythonanywhere.com/api/available-months");
     const data = await res.json();
-    availableYears.value = Object.keys(data);
-
-    watch(selectedYear, (newYear) => {
-      availableMonths.value = data[newYear] || [];
-      selectedMonth.value = "";
-    });
+    if (data.success && data.data) {
+      availableYears.value = Object.keys(data.data);
+      watch(selectedYear, (newYear) => {
+        availableMonths.value = data.data[newYear] || [];
+        selectedMonth.value = "";
+      });
+    } else {
+      throw new Error(data.error || "Invalid response format");
+    }
   } catch (error) {
     console.error("Error fetching available months:", error);
     // Fallback data
     availableYears.value = ["2024", "2023", "2022", "2021"];
+    availableMonths.value = [];
   }
 };
 
@@ -249,10 +251,14 @@ const getSlip = async () => {
       }),
     });
     const data = await res.json();
-    pdfUrl.value = data.url;
+    if (data.success) {
+      pdfUrl.value = data.url;
+    } else {
+      throw new Error(data.error || "เกิดข้อผิดพลาดในการดึงสลิป");
+    }
   } catch (error) {
     console.error("Error fetching slip:", error);
-    alert("เกิดข้อผิดพลาดในการดึงสลิป");
+    alert(`เกิดข้อผิดพลาดในการดึงสลิป: ${error.message}`);
   } finally {
     loading.value = false;
   }
@@ -263,77 +269,74 @@ const handleFileUpload = (event) => {
   
   if (file) {
     // Validate file type
-    if (file.type !== 'application/pdf') {
-      uploadError.value = 'กรุณาเลือกไฟล์ PDF เท่านั้น';
+    if (file.type !== "application/pdf") {
+      uploadError.value = "กรุณาเลือกไฟล์ PDF เท่านั้น";
       return;
     }
     
     // Validate file size (10MB max)
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      uploadError.value = 'ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 10MB)';
+      uploadError.value = "ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 10MB)";
       return;
     }
     
     selectedFile.value = file;
-    uploadError.value = '';
-    uploadMessage.value = '';
-    uploadUrl.value = '';
+    uploadError.value = "";
+    uploadMessage.value = "";
+    uploadUrl.value = "";
   }
 };
 
 const clearFile = () => {
   selectedFile.value = null;
-  uploadMessage.value = '';
-  uploadUrl.value = '';
-  uploadError.value = '';
+  uploadMessage.value = "";
+  uploadUrl.value = "";
+  uploadError.value = "";
   if (fileInput.value) {
-    fileInput.value.value = '';
+    fileInput.value.value = "";
   }
 };
 
 const uploadPDF = async () => {
   if (!selectedFile.value) {
-    uploadError.value = 'กรุณาเลือกไฟล์ PDF';
+    uploadError.value = "กรุณาเลือกไฟล์ PDF";
     return;
   }
 
   uploadLoading.value = true;
-  uploadError.value = '';
-  uploadMessage.value = '';
-  uploadUrl.value = '';
+  uploadError.value = "";
+  uploadMessage.value = "";
+  uploadUrl.value = "";
 
   try {
     // Create FormData for file upload
     const formData = new FormData();
-    formData.append('file', selectedFile.value);
-    formData.append('uploadedBy', userProfile.value.userId);
-    formData.append('uploadedAt', new Date().toISOString());
+    formData.append("file", selectedFile.value);
 
-    // Upload to Nuxt server API
-    const response = await $fetch('/api/upload-slip', {
-      method: 'POST',
-      body: formData
+    // Upload to backend API directly
+    const response = await fetch("https://locknew.pythonanywhere.com/api/upload-slip", {
+      method: "POST",
+      body: formData,
     });
 
-    if (response.success) {
-      uploadMessage.value = 'อัปโหลดไฟล์สำเร็จ!';
-      uploadUrl.value = response.url;
-      
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      uploadMessage.value = data.message || "อัปโหลดไฟล์สำเร็จ!";
+      uploadUrl.value = data.url; // Use the URL from the API response
       // Reload uploaded files list
       await loadUploadedFiles();
-      
       // Clear the form after successful upload
       setTimeout(() => {
         clearFile();
       }, 2000);
     } else {
-      throw new Error(response.error || 'เกิดข้อผิดพลาดในการอัปโหลด');
+      throw new Error(data.error || `HTTP error ${response.status}`);
     }
-
   } catch (error) {
-    console.error('Upload error:', error);
-    uploadError.value = error.message || 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์';
+    console.error("Upload error:", error);
+    uploadError.value = error.message || "เกิดข้อผิดพลาดในการอัปโหลดไฟล์";
   } finally {
     uploadLoading.value = false;
   }
@@ -341,57 +344,67 @@ const uploadPDF = async () => {
 
 const loadUploadedFiles = async () => {
   try {
-    const response = await $fetch('/api/files/list');
-    uploadedFiles.value = response.files || [];
+    const response = await fetch("https://locknew.pythonanywhere.com/api/files/list");
+    const data = await response.json();
+    if (data.success) {
+      uploadedFiles.value = data.files || [];
+    } else {
+      throw new Error(data.error || "เกิดข้อผิดพลาดในการโหลดไฟล์");
+    }
   } catch (error) {
-    console.error('Error loading files:', error);
+    console.error("Error loading files:", error);
+    uploadError.value = "เกิดข้อผิดพลาดในการโหลดไฟล์";
   }
 };
 
 const deleteFile = async (filename) => {
-  if (!confirm('คุณแน่ใจหรือไม่ที่จะลบไฟล์นี้?')) {
+  if (!confirm("คุณแน่ใจหรือไม่ที่จะลบไฟล์นี้?")) {
     return;
   }
 
   try {
-    await $fetch(`/api/files/delete?filename=${encodeURIComponent(filename)}`, {
-      method: 'DELETE'
-    });
-    
-    // Remove from local list
-    uploadedFiles.value = uploadedFiles.value.filter(file => file.name !== filename);
-    
-    // Show success message
-    uploadMessage.value = 'ลบไฟล์สำเร็จ!';
-    setTimeout(() => {
-      uploadMessage.value = '';
-    }, 3000);
-    
+    const response = await fetch(
+      `https://locknew.pythonanywhere.com/api/files/delete?filename=${encodeURIComponent(filename)}`,
+      { method: "DELETE" }
+    );
+    const data = await response.json();
+    if (data.success) {
+      // Remove from local list
+      uploadedFiles.value = uploadedFiles.value.filter((file) => file.name !== filename);
+      // Show success message
+      uploadMessage.value = "ลบไฟล์สำเร็จ!";
+      setTimeout(() => {
+        uploadMessage.value = "";
+      }, 3000);
+    } else {
+      throw new Error(data.error || "เกิดข้อผิดพลาดในการลบไฟล์");
+    }
   } catch (error) {
-    console.error('Error deleting file:', error);
-    uploadError.value = 'เกิดข้อผิดพลาดในการลบไฟล์';
+    console.error("Error deleting file:", error);
+    uploadError.value = error.message || "เกิดข้อผิดพลาดในการลบไฟล์";
   }
 };
 
 const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 Bytes';
+  if (bytes === 0) return "0 Bytes";
   const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const sizes = ["Bytes", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 };
 
 const formatDate = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('th-TH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+  return date.toLocaleDateString("th-TH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 };
 </script>
+
 <style scoped>
 .bg-military-gradient {
   background: linear-gradient(
@@ -693,6 +706,16 @@ const formatDate = (dateString) => {
 .success-message {
   background: #c6f6d5;
   color: #22543d;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 16px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.error-message {
+  background: #fed7d7;
+  color: #742a2a;
   padding: 12px;
   border-radius: 8px;
   margin-top: 16px;
