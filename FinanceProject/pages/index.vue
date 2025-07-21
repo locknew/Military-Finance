@@ -94,7 +94,9 @@
           <div v-if="selectedFile" class="file-preview">
             <div class="file-info">
               <span class="file-name">{{ selectedFile.name }}</span>
-              <span class="file-size">({{ formatFileSize(selectedFile.size) }})</span>
+              <span class="file-size"
+                >({{ formatFileSize(selectedFile.size) }})</span
+              >
             </div>
             <button @click="clearFile" class="clear-btn">✕</button>
           </div>
@@ -114,22 +116,20 @@
           {{ uploadMessage }}
         </div>
 
-        <div v-if="uploadUrl" class="success-message">
-          ✅ ไฟล์อัปโหลดแล้ว:
-          <a :href="uploadUrl" target="_blank" class="underline text-blue-600">
-            {{ uploadUrl }}
-          </a>
+        <div v-if="uploadedFileCount > 0" class="success-message">
+          ✅ อัปโหลดไฟล์สำเร็จ: {{ uploadedFileCount }} ไฟล์
         </div>
 
-        <div v-if="uploadError" class="error-message">
-          ❌ {{ uploadError }}
-        </div>
-
+        <div v-if="uploadError" class="error-message">❌ {{ uploadError }}</div>
         <!-- File list section -->
         <div v-if="uploadedFiles.length > 0" class="uploaded-files-section">
           <h4 class="files-title">ไฟล์ที่อัปโหลดแล้ว</h4>
           <div class="files-list">
-            <div v-for="file in uploadedFiles" :key="file.name" class="file-item">
+            <div
+              v-for="file in uploadedFiles"
+              :key="file.name"
+              class="file-item"
+            >
               <div class="file-details">
                 <span class="file-name">{{ file.name }}</span>
                 <span class="file-size">{{ formatFileSize(file.size) }}</span>
@@ -137,7 +137,9 @@
               </div>
               <div class="file-actions">
                 <a :href="file.url" target="_blank" class="view-btn">👁️</a>
-                <button @click="deleteFile(file.name)" class="delete-btn">🗑️</button>
+                <button @click="deleteFile(file.name)" class="delete-btn">
+                  🗑️
+                </button>
               </div>
             </div>
           </div>
@@ -167,7 +169,7 @@ const uploadLoading = ref(false);
 const isLoggedIn = ref(false);
 const isLoggingIn = ref(false);
 const userProfile = ref(null);
-
+const uploadedFileCount = ref(0);
 // File upload related
 const selectedFile = ref(null);
 const fileInput = ref(null);
@@ -213,7 +215,9 @@ const handleLogin = async () => {
 
 const fetchAvailableMonths = async () => {
   try {
-    const res = await fetch("https://locknew.pythonanywhere.com/api/available-months");
+    const res = await fetch(
+      "https://locknew.pythonanywhere.com/api/available-months"
+    );
     const data = await res.json();
     if (data.success && data.data) {
       availableYears.value = Object.keys(data.data);
@@ -266,21 +270,21 @@ const getSlip = async () => {
 
 const handleFileUpload = (event) => {
   const file = event.target.files[0];
-  
+
   if (file) {
     // Validate file type
     if (file.type !== "application/pdf") {
       uploadError.value = "กรุณาเลือกไฟล์ PDF เท่านั้น";
       return;
     }
-    
+
     // Validate file size (10MB max)
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       uploadError.value = "ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 10MB)";
       return;
     }
-    
+
     selectedFile.value = file;
     uploadError.value = "";
     uploadMessage.value = "";
@@ -308,6 +312,7 @@ const uploadPDF = async () => {
   uploadError.value = "";
   uploadMessage.value = "";
   uploadUrl.value = "";
+  uploadedFileCount.value = 0; // Reset file count
 
   try {
     // Create FormData for file upload
@@ -315,16 +320,30 @@ const uploadPDF = async () => {
     formData.append("file", selectedFile.value);
 
     // Upload to backend API directly
-    const response = await fetch("https://locknew.pythonanywhere.com/api/upload-slip", {
-      method: "POST",
-      body: formData,
-    });
+    const response = await fetch(
+      "https://locknew.pythonanywhere.com/api/upload-slip",
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
 
     const data = await response.json();
 
     if (response.ok && data.success) {
       uploadMessage.value = data.message || "อัปโหลดไฟล์สำเร็จ!";
-      uploadUrl.value = data.url; // Use the URL from the API response
+
+      // Count the uploaded files instead of showing URL
+      if (data.files) {
+        if (Array.isArray(data.files)) {
+          uploadedFileCount.value = data.files.length;
+        } else {
+          uploadedFileCount.value = 1; // Single file uploaded
+        }
+      } else {
+        uploadedFileCount.value = 1; // Fallback if files info not available
+      }
+
       // Reload uploaded files list
       await loadUploadedFiles();
       // Clear the form after successful upload
@@ -344,7 +363,9 @@ const uploadPDF = async () => {
 
 const loadUploadedFiles = async () => {
   try {
-    const response = await fetch("https://locknew.pythonanywhere.com/api/files/list");
+    const response = await fetch(
+      "https://locknew.pythonanywhere.com/api/files/list"
+    );
     const data = await response.json();
     if (data.success) {
       uploadedFiles.value = data.files || [];
@@ -364,13 +385,17 @@ const deleteFile = async (filename) => {
 
   try {
     const response = await fetch(
-      `https://locknew.pythonanywhere.com/api/files/delete?filename=${encodeURIComponent(filename)}`,
+      `https://locknew.pythonanywhere.com/api/files/delete?filename=${encodeURIComponent(
+        filename
+      )}`,
       { method: "DELETE" }
     );
     const data = await response.json();
     if (data.success) {
       // Remove from local list
-      uploadedFiles.value = uploadedFiles.value.filter((file) => file.name !== filename);
+      uploadedFiles.value = uploadedFiles.value.filter(
+        (file) => file.name !== filename
+      );
       // Show success message
       uploadMessage.value = "ลบไฟล์สำเร็จ!";
       setTimeout(() => {
