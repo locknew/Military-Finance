@@ -1,6 +1,6 @@
 flask
 flask-cors
+pymongo
 PyMuPDF
-google-api-python-client
-google-auth
-google-auth-oauthlib
+python-dotenv
+gunicorn
