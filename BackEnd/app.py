@@ -226,6 +226,31 @@ def delete_file():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/files/delete-by-period", methods=["DELETE"])
+def delete_by_period():
+    try:
+        year = request.args.get("year")
+        month = request.args.get("month")
+
+        if not year:
+            return jsonify({"success": False, "error": "ต้องระบุปี"}), 400
+
+        query = {"year": year}
+        if month:
+            query["month"] = month
+
+        result = payslips_collection.delete_many(query)
+
+        return jsonify({
+            "success": True,
+            "message": f"ลบสำเร็จ {result.deleted_count} รายการ",
+            "deletedCount": result.deleted_count
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/search", methods=["POST"])
 def search_slips():
     try:

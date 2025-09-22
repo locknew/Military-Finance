@@ -24,52 +24,10 @@
         <p class="header-subtitle">ระบบตรวจสอบสลิปเงินเดือนทหาร</p>
       </div>
 
-      <!-- Search Type -->
-      <div class="form-group">
-        <label class="form-label">วิธีค้นหา</label>
-        <div class="search-type-buttons">
-          <button
-            v-for="type in ['account','name']"
-            :key="type"
-            @click="searchType = type"
-            :class="['search-type-btn', { active: searchType === type }]"
-          >
-            <span>{{ type === 'account' ? '🔢' : '👤' }}</span>
-            {{ type === 'account' ? 'เลขบัญชี' : 'ชื่อ-นามสกุล' }}
-          </button>
-        </div>
-      </div>
-
       <!-- Account Input -->
-      <div v-if="searchType === 'account'" class="form-group">
+      <div class="form-group">
         <label class="form-label">เลขบัญชี</label>
         <input v-model="account" placeholder="กรอกเลขบัญชีของคุณ" class="input" />
-      </div>
-
-      <!-- Name Input -->
-      <div v-if="searchType === 'name'" class="form-group">
-        <label class="form-label">ชื่อ-นามสกุล</label>
-        <input
-          v-model="searchName"
-          placeholder="กรอกชื่อหรือนามสกุล"
-          class="input"
-          @input="handleNameSearch"
-        />
-
-        <div v-if="searchResults.length" class="search-results">
-          <div class="search-results-header">พบ {{ searchResults.length }} รายการ</div>
-          <div
-            v-for="result in searchResults"
-            :key="result._id"
-            @click="selectSearchResult(result)"
-            :class="['search-result-item', { selected: selectedResult?._id === result._id }]"
-          >
-            <div class="result-info">
-              <span>{{ result.rank }} {{ result.name }}</span>
-              <span>{{ result.accountNumber }}</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- Year / Month Select -->
@@ -103,7 +61,16 @@
           <span v-if="currentSlipInfo.name">{{ currentSlipInfo.rank }} {{ currentSlipInfo.name }}</span>
           <button @click="downloadPdf" class="download-btn">💾 ดาวน์โหลด</button>
         </div>
-        <iframe :src="pdfUrl" class="pdf-iframe"></iframe>
+        
+        <!-- Desktop: Show iframe -->
+        <iframe v-if="!isMobile" :src="pdfUrl" class="pdf-iframe"></iframe>
+        
+        <!-- Mobile: Show download button and preview message -->
+        <div v-else class="mobile-pdf-view">
+          <div class="mobile-pdf-icon">📄</div>
+          <p class="mobile-pdf-text">คลิกปุ่ม "ดาวน์โหลด" ด้านบนเพื่อดูสลิปเงินเดือน</p>
+          <button @click="openPdfInNewTab" class="mobile-view-btn">👁️ เปิดดูสลิป</button>
+        </div>
       </div>
 
       <!-- Admin Panel -->
@@ -134,19 +101,37 @@
         <div v-if="uploadMessage" class="success-message">{{ uploadMessage }}</div>
         <div v-if="uploadError" class="error-message">❌ {{ uploadError }}</div>
 
-        <!-- File list -->
-        <div v-if="uploadedFiles.length" class="uploaded-files-section">
-          <h4>ไฟล์ที่อัปโหลดแล้ว</h4>
-          <div v-for="file in uploadedFiles" :key="file._id" class="file-item">
-            <div>
-              <span>{{ file.rank }} {{ file.name || file.accountNumber }}</span>
-              <span>{{ file.month }}/{{ file.year }}</span>
-            </div>
-            <div>
-              <button @click="viewFile(file)">👁️</button>
-              <button @click="deleteFile(file._id)">🗑️</button>
+        <!-- Delete Controls -->
+        <div class="delete-section">
+          <div class="admin-header">
+            <h3>ลบสลิปเงินเดือน</h3>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">เลือกช่วงเวลาที่ต้องการลบ</label>
+            <div class="grid">
+              <select v-model="deleteYear" class="input">
+                <option value="">เลือกปี</option>
+                <option v-for="y in availableYears" :key="y">{{ y }}</option>
+              </select>
+
+              <select v-model="deleteMonth" class="input" :disabled="!deleteYear">
+                <option value="">ทั้งหมด</option>
+                <option v-for="m in getMonthsForYear(deleteYear)" :key="m" :value="m">
+                  {{ getMonthName(m) }}
+                </option>
+              </select>
             </div>
           </div>
+
+          <button @click="deleteSlipsByPeriod" class="btn-delete" :disabled="!deleteYear || deleteLoading">
+            <span v-if="deleteLoading" class="loading"></span>
+            <span v-else>🗑️</span>
+            {{ deleteLoading ? "กำลังลบ..." : deleteMonth ? `ลบสลิปเดือน ${getMonthName(deleteMonth)} ${deleteYear}` : `ลบสลิปทั้งปี ${deleteYear}` }}
+          </button>
+
+          <div v-if="deleteMessage" class="success-message">{{ deleteMessage }}</div>
+          <div v-if="deleteError" class="error-message">❌ {{ deleteError }}</div>
         </div>
       </div>
     </div>
@@ -162,11 +147,7 @@ const config = useRuntimeConfig();
 const API_BASE = config.public.apiBase;
 
 // --- State ---
-const searchType = ref("account");
 const account = ref("");
-const searchName = ref("");
-const searchResults = ref([]);
-const selectedResult = ref(null);
 
 const availableYears = ref([]);
 const availableMonths = ref([]);
@@ -175,7 +156,12 @@ const selectedMonth = ref("");
 
 const pdfUrl = ref("");
 const currentSlipInfo = ref({});
-const uploadedFiles = ref([]);
+
+const deleteYear = ref("");
+const deleteMonth = ref("");
+const deleteLoading = ref(false);
+const deleteMessage = ref("");
+const deleteError = ref("");
 
 const selectedFile = ref(null);
 const fileInput = ref(null);
@@ -189,8 +175,7 @@ const uploadLoading = ref(false);
 const uploadMessage = ref("");
 const uploadError = ref("");
 const userProfile = ref(null);
-
-// --- Constants ---
+const isMobile = ref(false);
 const THAI_MONTHS = {
   "01": "มกราคม", "02": "กุมภาพันธ์", "03": "มีนาคม",
   "04": "เมษายน", "05": "พฤษภาคม", "06": "มิถุนายน",
@@ -200,12 +185,16 @@ const THAI_MONTHS = {
 
 // --- Utils ---
 const getMonthName = (m) => THAI_MONTHS[m] || m;
+const getMonthsForYear = (year) => yearMonthData[year] || [];
 const formatFileSize = (b) => !b ? "0 Bytes" : 
   (["Bytes","KB","MB","GB"])[Math.floor(Math.log(b)/Math.log(1024))] ?
   `${(b/Math.pow(1024,Math.floor(Math.log(b)/Math.log(1024)))).toFixed(2)} ${["Bytes","KB","MB","GB"][Math.floor(Math.log(b)/Math.log(1024))]}` : "0 Bytes";
 
 // --- Lifecycle ---
 onMounted(async () => {
+  // Detect mobile device
+  isMobile.value = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
   try {
     await $liff.init({ liffId: config.public.liffId });
     if ($liff.isLoggedIn()) {
@@ -213,7 +202,6 @@ onMounted(async () => {
       userProfile.value = await $liff.getProfile();
       if (isAdmin(userProfile.value.userId)) {
         isAdminUser.value = true;
-        await loadUploadedFiles();
       }
       await fetchAvailableMonths();
     }
@@ -230,7 +218,6 @@ watch(selectedYear, (y) => {
 
 // --- Data cache ---
 let yearMonthData = {};
-let searchTimer = null;
 
 // --- API Calls ---
 const api = async (url, opts={}) => {
@@ -247,18 +234,6 @@ const fetchAvailableMonths = async () => {
     }
   } catch (e) {
     console.error("fetchAvailableMonths:", e);
-  }
-};
-
-const searchByName = async () => {
-  try {
-    const data = await api("/search", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ search: searchName.value })
-    });
-    if (data.success) searchResults.value = data.results || [];
-  } catch (e) {
-    console.error("searchByName:", e);
   }
 };
 
@@ -283,24 +258,17 @@ const getSlip = async () => {
 // --- Handlers ---
 const handleLogin = () => { isLoggingIn.value = true; $liff.login(); };
 
-const handleNameSearch = () => {
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    searchName.value.length >= 2 ? searchByName() : searchResults.value = [];
-  }, 500);
-};
-
-const selectSearchResult = (r) => {
-  selectedResult.value = r; account.value = r.accountNumber; selectedYear.value = r.year;
-  setTimeout(()=> selectedMonth.value = r.month, 100);
-};
-
 const downloadPdf = () => {
   if (!pdfUrl.value) return;
   const a = document.createElement("a");
   a.href = pdfUrl.value;
   a.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
   a.click();
+};
+
+const openPdfInNewTab = () => {
+  if (!pdfUrl.value) return;
+  window.open(pdfUrl.value, '_blank');
 };
 
 const handleFileUpload = (e) => {
@@ -325,40 +293,44 @@ const uploadPDF = async () => {
     const data = await res.json();
     if (res.ok && data.success) {
       uploadMessage.value = data.message || "อัปโหลดสำเร็จ!";
-      await loadUploadedFiles(); await fetchAvailableMonths(); clearFile();
+      await fetchAvailableMonths(); clearFile();
     } else throw new Error(data.error);
   } catch (e) { uploadError.value = e.message; }
   finally { uploadLoading.value = false; }
 };
 
-const loadUploadedFiles = async () => {
+const deleteSlipsByPeriod = async () => {
+  if (!deleteYear.value) return;
+  
+  const confirmMsg = deleteMonth.value 
+    ? `คุณแน่ใจว่าต้องการลบสลิปทั้งหมดของเดือน ${getMonthName(deleteMonth.value)} ${deleteYear.value}?`
+    : `คุณแน่ใจว่าต้องการลบสลิปทั้งหมดของปี ${deleteYear.value}?`;
+  
+  if (!confirm(confirmMsg)) return;
+  
+  deleteLoading.value = true; deleteMessage.value = ""; deleteError.value = "";
   try {
-    const data = await api("/files/list?limit=20");
-    if (data.success) uploadedFiles.value = data.files || [];
-  } catch (e) { console.error("loadUploadedFiles:", e); }
-};
-
-const deleteFile = async (id) => {
-  if (!confirm("คุณแน่ใจว่าจะลบ?")) return;
-  try {
-    const data = await api(`/files/delete?file_id=${id}`, { method:"DELETE" });
-    if (data.success) uploadedFiles.value = uploadedFiles.value.filter(f=>f._id!==id);
-  } catch (e) { uploadError.value = e.message; }
-};
-
-const viewFile = async (file) => {
-  loading.value = true;
-  try {
-    const data = await api("/get-slip", {
-      method: "POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ account:file.accountNumber, year:file.year, month:file.month })
-    });
-    if (data.success) {
-      pdfUrl.value = data.pdfData; currentSlipInfo.value = data.metadata || {};
-      account.value = file.accountNumber; selectedYear.value = file.year; selectedMonth.value = file.month;
+    let url = `${API_BASE}/files/delete-by-period?year=${deleteYear.value}`;
+    if (deleteMonth.value) {
+      url += `&month=${deleteMonth.value}`;
     }
-  } catch (e) { alert("ดูไฟล์ผิดพลาด"); }
-  finally { loading.value = false; }
+    
+    const res = await fetch(url, { method: "DELETE" });
+    const data = await res.json();
+    
+    if (res.ok && data.success) {
+      deleteMessage.value = `ลบสำเร็จ ${data.deletedCount} รายการ`;
+      await fetchAvailableMonths();
+      deleteYear.value = "";
+      deleteMonth.value = "";
+    } else {
+      throw new Error(data.error || "เกิดข้อผิดพลาดในการลบ");
+    }
+  } catch (e) {
+    deleteError.value = e.message;
+  } finally {
+    deleteLoading.value = false;
+  }
 };
 </script>
 
@@ -433,6 +405,55 @@ const viewFile = async (file) => {
   width: 100%;
   height: 400px;
   border: none;
+}
+
+/* Mobile PDF View */
+.mobile-pdf-view {
+  padding: 40px 20px;
+  text-align: center;
+  background: #f7fafc;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.mobile-pdf-icon {
+  font-size: 64px;
+  margin-bottom: 8px;
+}
+
+.mobile-pdf-text {
+  color: #4a5568;
+  font-size: 16px;
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.mobile-view-btn {
+  background: linear-gradient(135deg, #3e6b2b 0%, #4a7c3a 50%, #5a8b4a 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 28px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-view-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(74, 124, 58, 0.3);
+}
+
+.mobile-view-btn:active {
+  transform: translateY(0);
 }
 
 /* Admin Section */
@@ -631,6 +652,84 @@ const viewFile = async (file) => {
   margin-top: 16px;
   font-size: 14px;
   text-align: center;
+}
+
+/* Delete Section */
+.delete-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-delete {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #c53030 0%, #e53e3e 50%, #fc8181 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-delete:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(197, 48, 48, 0.3);
+}
+
+.btn-delete:active {
+  transform: translateY(0);
+}
+
+.btn-delete:disabled {
+  background: #cbd5e0;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Responsive Design for Mobile */
+@media (max-width: 640px) {
+  .container {
+    padding: 24px 20px;
+    margin: 10px;
+  }
+
+  .header-icon {
+    font-size: 40px;
+  }
+
+  .header-title {
+    font-size: 20px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pdf-iframe {
+    height: 300px;
+  }
+
+  .mobile-pdf-view {
+    padding: 30px 16px;
+    min-height: 250px;
+  }
+
+  .mobile-pdf-icon {
+    font-size: 48px;
+  }
+
+  .mobile-pdf-text {
+    font-size: 14px;
+  }
 }
 
 .fade-in {
