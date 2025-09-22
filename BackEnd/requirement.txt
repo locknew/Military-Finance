@@ -4,4 +4,3 @@ pymongo
 PyMuPDF
 python-dotenv
 gunicorn
-bson
