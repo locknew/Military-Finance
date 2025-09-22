@@ -46,7 +46,7 @@
         <input v-model="account" placeholder="กรอกเลขบัญชีของคุณ" class="input" />
       </div>
 
-      <!-- Name Input + Search -->
+      <!-- Name Input -->
       <div v-if="searchType === 'name'" class="form-group">
         <label class="form-label">ชื่อ-นามสกุล</label>
         <input
@@ -68,7 +68,6 @@
               <span>{{ result.rank }} {{ result.name }}</span>
               <span>{{ result.accountNumber }}</span>
             </div>
-            <span class="result-date">{{ result.month }}/{{ result.year }}</span>
           </div>
         </div>
       </div>
