@@ -25,7 +25,10 @@ export default {
 
   app: {
     baseURL: '/',
-    head: { title: 'Payslip Viewer' }
+    head: [{ title: 'Payslip Viewer' },
+      {rel: 'icon', type: 'image/x-icon', href: '/favicon.ico'},
+
+    ]
   },
 
   plugins: ['~/plugins/liff-init.client.js'],
