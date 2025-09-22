@@ -13,7 +13,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=[
+    "https://dev.finance-cpn.pages.dev",
+    "https://financepj.netlify.app"
+], supports_credentials=True)
 
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")

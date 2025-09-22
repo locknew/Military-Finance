@@ -27,7 +27,8 @@ export default {
   app: {
     head: {
       title: 'Payslip Viewer'
-    }
+    },
+    
   },
 
   // Plugins to run before rendering page: https://go.nuxtjs.dev/config-plugins
@@ -52,6 +53,6 @@ export default {
   build: {
   },
   nitro: {
-    preset: "cloudflare-pages"
+    preset: "netlify"
   }
 }
