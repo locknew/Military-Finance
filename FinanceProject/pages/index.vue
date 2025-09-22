@@ -1,7 +1,5 @@
 <template>
-  <div
-    class="min-h-screen bg-military-gradient flex items-center justify-center p-5"
-  >
+  <div class="min-h-screen bg-military-gradient flex items-center justify-center p-5">
     <!-- Login Screen -->
     <div v-if="!isLoggedIn" class="login-container fade-in">
       <div class="login-header">
@@ -19,128 +17,135 @@
 
     <!-- Main App -->
     <div v-else class="container fade-in">
+      <!-- Header -->
       <div class="header">
         <span class="header-icon">🪖</span>
         <h1 class="header-title">ตรวจสอบสลิปเงินเดือน</h1>
         <p class="header-subtitle">ระบบตรวจสอบสลิปเงินเดือนทหาร</p>
       </div>
 
+      <!-- Search Type -->
       <div class="form-group">
-        <label class="form-label">เลขบัญชี</label>
-        <input
-          v-model="account"
-          placeholder="กรอกเลขบัญชีของคุณ"
-          class="input"
-          type="text"
-        />
+        <label class="form-label">วิธีค้นหา</label>
+        <div class="search-type-buttons">
+          <button
+            v-for="type in ['account','name']"
+            :key="type"
+            @click="searchType = type"
+            :class="['search-type-btn', { active: searchType === type }]"
+          >
+            <span>{{ type === 'account' ? '🔢' : '👤' }}</span>
+            {{ type === 'account' ? 'เลขบัญชี' : 'ชื่อ-นามสกุล' }}
+          </button>
+        </div>
       </div>
 
+      <!-- Account Input -->
+      <div v-if="searchType === 'account'" class="form-group">
+        <label class="form-label">เลขบัญชี</label>
+        <input v-model="account" placeholder="กรอกเลขบัญชีของคุณ" class="input" />
+      </div>
+
+      <!-- Name Input + Search -->
+      <div v-if="searchType === 'name'" class="form-group">
+        <label class="form-label">ชื่อ-นามสกุล</label>
+        <input
+          v-model="searchName"
+          placeholder="กรอกชื่อหรือนามสกุล"
+          class="input"
+          @input="handleNameSearch"
+        />
+
+        <div v-if="searchResults.length" class="search-results">
+          <div class="search-results-header">พบ {{ searchResults.length }} รายการ</div>
+          <div
+            v-for="result in searchResults"
+            :key="result._id"
+            @click="selectSearchResult(result)"
+            :class="['search-result-item', { selected: selectedResult?._id === result._id }]"
+          >
+            <div class="result-info">
+              <span>{{ result.rank }} {{ result.name }}</span>
+              <span>{{ result.accountNumber }}</span>
+            </div>
+            <span class="result-date">{{ result.month }}/{{ result.year }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Year / Month Select -->
       <div class="form-group">
         <label class="form-label">เลือกช่วงเวลา</label>
         <div class="grid">
           <select v-model="selectedYear" class="input">
             <option value="">เลือกปี</option>
-            <option v-for="y in availableYears" :key="y" :value="y">
-              {{ y }}
-            </option>
+            <option v-for="y in availableYears" :key="y">{{ y }}</option>
           </select>
 
-          <select
-            v-model="selectedMonth"
-            class="input"
-            :disabled="!selectedYear"
-          >
+          <select v-model="selectedMonth" class="input" :disabled="!selectedYear">
             <option value="">เลือกเดือน</option>
             <option v-for="m in availableMonths" :key="m" :value="m">
-              {{ m }}
+              {{ getMonthName(m) }}
             </option>
           </select>
         </div>
       </div>
 
+      <!-- Show Slip -->
       <button @click="getSlip" class="btn" :disabled="loading">
         <span v-if="loading" class="loading"></span>
         <span v-else>📥</span>
         {{ loading ? "กำลังโหลด..." : "แสดงสลิปเงินเดือน" }}
       </button>
 
+      <!-- PDF Viewer -->
       <div v-if="pdfUrl" class="pdf-container slide-up">
+        <div class="pdf-header">
+          <span v-if="currentSlipInfo.name">{{ currentSlipInfo.rank }} {{ currentSlipInfo.name }}</span>
+          <button @click="downloadPdf" class="download-btn">💾 ดาวน์โหลด</button>
+        </div>
         <iframe :src="pdfUrl" class="pdf-iframe"></iframe>
       </div>
 
-      <!-- Admin Section -->
+      <!-- Admin Panel -->
       <div v-if="isAdminUser" class="admin-section slide-up">
         <div class="admin-header">
-          <h3 class="admin-title">อัปโหลดไฟล์ PDF</h3>
-          <span class="admin-badge">ADMIN</span>
+          <h3>อัปโหลดไฟล์ PDF</h3><span class="admin-badge">ADMIN</span>
         </div>
 
+        <!-- Upload -->
         <div class="form-group">
           <div class="file-input">
-            <input
-              id="file-upload"
-              type="file"
-              accept=".pdf"
-              @change="handleFileUpload"
-              ref="fileInput"
-              class="hidden"
-            />
-            <label for="file-upload" class="file-input-label">
-              📄 คลิกเพื่อเลือกไฟล์ PDF
-            </label>
+            <input id="file-upload" type="file" accept=".pdf" @change="handleFileUpload" ref="fileInput" hidden />
+            <label for="file-upload" class="file-input-label">📄 คลิกเพื่อเลือกไฟล์ PDF</label>
           </div>
 
-          <!-- File preview -->
           <div v-if="selectedFile" class="file-preview">
-            <div class="file-info">
-              <span class="file-name">{{ selectedFile.name }}</span>
-              <span class="file-size"
-                >({{ formatFileSize(selectedFile.size) }})</span
-              >
-            </div>
+            <span>{{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})</span>
             <button @click="clearFile" class="clear-btn">✕</button>
           </div>
         </div>
 
-        <button
-          @click="uploadPDF"
-          class="btn"
-          :disabled="uploadLoading || !selectedFile"
-        >
+        <button @click="uploadPDF" class="btn" :disabled="uploadLoading || !selectedFile">
           <span v-if="uploadLoading" class="loading"></span>
           <span v-else>🚀</span>
           {{ uploadLoading ? "กำลังอัปโหลด..." : "อัปโหลด" }}
         </button>
 
-        <div v-if="uploadMessage" class="success-message">
-          {{ uploadMessage }}
-        </div>
-
-        <div v-if="uploadedFileCount > 0" class="success-message">
-          ✅ อัปโหลดไฟล์สำเร็จ: {{ uploadedFileCount }} ไฟล์
-        </div>
-
+        <div v-if="uploadMessage" class="success-message">{{ uploadMessage }}</div>
         <div v-if="uploadError" class="error-message">❌ {{ uploadError }}</div>
-        <!-- File list section -->
-        <div v-if="uploadedFiles.length > 0" class="uploaded-files-section">
-          <h4 class="files-title">ไฟล์ที่อัปโหลดแล้ว</h4>
-          <div class="files-list">
-            <div
-              v-for="file in uploadedFiles"
-              :key="file.name"
-              class="file-item"
-            >
-              <div class="file-details">
-                <span class="file-name">{{ file.name }}</span>
-                <span class="file-size">{{ formatFileSize(file.size) }}</span>
-                <span class="file-date">{{ formatDate(file.uploadedAt) }}</span>
-              </div>
-              <div class="file-actions">
-                <a :href="file.url" target="_blank" class="view-btn">👁️</a>
-                <button @click="deleteFile(file.name)" class="delete-btn">
-                  🗑️
-                </button>
-              </div>
+
+        <!-- File list -->
+        <div v-if="uploadedFiles.length" class="uploaded-files-section">
+          <h4>ไฟล์ที่อัปโหลดแล้ว</h4>
+          <div v-for="file in uploadedFiles" :key="file._id" class="file-item">
+            <div>
+              <span>{{ file.rank }} {{ file.name || file.accountNumber }}</span>
+              <span>{{ file.month }}/{{ file.year }}</span>
+            </div>
+            <div>
+              <button @click="viewFile(file)">👁️</button>
+              <button @click="deleteFile(file._id)">🗑️</button>
             </div>
           </div>
         </div>
@@ -152,285 +157,214 @@
 <script setup>
 import { ref, onMounted, watch } from "vue";
 import { isAdmin } from "@/utils/isAdmin";
-
 const { $liff } = useNuxtApp();
+
+// --- State ---
+const searchType = ref("account");
 const account = ref("");
+const searchName = ref("");
+const searchResults = ref([]);
+const selectedResult = ref(null);
+
 const availableYears = ref([]);
 const availableMonths = ref([]);
 const selectedYear = ref("");
 const selectedMonth = ref("");
+
 const pdfUrl = ref("");
-const uploadMessage = ref("");
-const uploadError = ref("");
-const uploadUrl = ref("");
-const isAdminUser = ref(false);
-const loading = ref(false);
-const uploadLoading = ref(false);
-const isLoggedIn = ref(false);
-const isLoggingIn = ref(false);
-const userProfile = ref(null);
-const uploadedFileCount = ref(0);
-// File upload related
-const selectedFile = ref(null);
-const fileInput = ref(null);
+const currentSlipInfo = ref({});
 const uploadedFiles = ref([]);
 
+const selectedFile = ref(null);
+const fileInput = ref(null);
+
+const isAdminUser = ref(false);
+const isLoggedIn = ref(false);
+const isLoggingIn = ref(false);
+const loading = ref(false);
+const uploadLoading = ref(false);
+
+const uploadMessage = ref("");
+const uploadError = ref("");
+const userProfile = ref(null);
+
+// --- Constants ---
+const API_BASE = "https://military-finance.onrender.com/api";
+const THAI_MONTHS = {
+  "01": "มกราคม", "02": "กุมภาพันธ์", "03": "มีนาคม",
+  "04": "เมษายน", "05": "พฤษภาคม", "06": "มิถุนายน",
+  "07": "กรกฎาคม", "08": "สิงหาคม", "09": "กันยายน",
+  "10": "ตุลาคม", "11": "พฤศจิกายน", "12": "ธันวาคม"
+};
+
+// --- Utils ---
+const getMonthName = (m) => THAI_MONTHS[m] || m;
+const formatFileSize = (b) => !b ? "0 Bytes" : 
+  (["Bytes","KB","MB","GB"])[Math.floor(Math.log(b)/Math.log(1024))] ?
+  `${(b/Math.pow(1024,Math.floor(Math.log(b)/Math.log(1024)))).toFixed(2)} ${["Bytes","KB","MB","GB"][Math.floor(Math.log(b)/Math.log(1024))]}` : "0 Bytes";
+
+// --- Lifecycle ---
 onMounted(async () => {
   try {
-    // Initialize LIFF
-    await $liff.init({
-      liffId: import.meta.env.VITE_LIFF_ID,
-    });
-
+    await $liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
     if ($liff.isLoggedIn()) {
       isLoggedIn.value = true;
-
-      // Get user profile
       userProfile.value = await $liff.getProfile();
-
-      // Check if user is admin
       if (isAdmin(userProfile.value.userId)) {
         isAdminUser.value = true;
-        // Load uploaded files for admin
         await loadUploadedFiles();
       }
-
-      // Fetch available months
       await fetchAvailableMonths();
     }
-  } catch (error) {
-    console.error("LIFF initialization failed:", error);
+  } catch (e) {
+    console.error("LIFF init failed:", e);
   }
 });
 
-const handleLogin = async () => {
-  isLoggingIn.value = true;
-  try {
-    $liff.login();
-  } catch (error) {
-    console.error("Login failed:", error);
-    isLoggingIn.value = false;
-  }
+// --- Watchers ---
+watch(selectedYear, (y) => {
+  availableMonths.value = yearMonthData[y] || [];
+  selectedMonth.value = "";
+});
+
+// --- Data cache ---
+let yearMonthData = {};
+let searchTimer = null;
+
+// --- API Calls ---
+const api = async (url, opts={}) => {
+  const res = await fetch(`${API_BASE}${url}`, opts);
+  return res.json();
 };
 
 const fetchAvailableMonths = async () => {
   try {
-    const res = await fetch(
-      "https://locknew.pythonanywhere.com/api/available-months"
-    );
-    const data = await res.json();
+    const data = await api("/available-months");
     if (data.success && data.data) {
-      availableYears.value = Object.keys(data.data);
-      watch(selectedYear, (newYear) => {
-        availableMonths.value = data.data[newYear] || [];
-        selectedMonth.value = "";
-      });
-    } else {
-      throw new Error(data.error || "Invalid response format");
+      yearMonthData = data.data;
+      availableYears.value = Object.keys(data.data).sort((a,b)=>b-a);
     }
-  } catch (error) {
-    console.error("Error fetching available months:", error);
-    // Fallback data
-    availableYears.value = ["2024", "2023", "2022", "2021"];
-    availableMonths.value = [];
+  } catch (e) {
+    console.error("fetchAvailableMonths:", e);
+  }
+};
+
+const searchByName = async () => {
+  try {
+    const data = await api("/search", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ search: searchName.value })
+    });
+    if (data.success) searchResults.value = data.results || [];
+  } catch (e) {
+    console.error("searchByName:", e);
   }
 };
 
 const getSlip = async () => {
   if (!account.value || !selectedYear.value || !selectedMonth.value) {
-    alert("กรุณากรอกข้อมูลให้ครบถ้วน");
-    return;
+    alert("กรุณากรอกข้อมูลให้ครบถ้วน"); return;
   }
-
-  loading.value = true;
-
+  loading.value = true; pdfUrl.value = ""; currentSlipInfo.value = {};
   try {
-    const res = await fetch("https://locknew.pythonanywhere.com/api/get-slip", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        account: account.value,
-        month: selectedMonth.value,
-        year: selectedYear.value,
-      }),
+    const data = await api("/get-slip", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account: account.value, year: selectedYear.value, month: selectedMonth.value })
     });
-    const data = await res.json();
     if (data.success) {
-      pdfUrl.value = data.url;
-    } else {
-      throw new Error(data.error || "เกิดข้อผิดพลาดในการดึงสลิป");
-    }
-  } catch (error) {
-    console.error("Error fetching slip:", error);
-    alert(`เกิดข้อผิดพลาดในการดึงสลิป: ${error.message}`);
-  } finally {
-    loading.value = false;
-  }
+      pdfUrl.value = data.pdfData;
+      currentSlipInfo.value = data.metadata || {};
+    } else throw new Error(data.error);
+  } catch (e) { alert(e.message || "โหลดสลิปผิดพลาด"); }
+  finally { loading.value = false; }
 };
 
-const handleFileUpload = (event) => {
-  const file = event.target.files[0];
+// --- Handlers ---
+const handleLogin = () => { isLoggingIn.value = true; $liff.login(); };
 
-  if (file) {
-    // Validate file type
-    if (file.type !== "application/pdf") {
-      uploadError.value = "กรุณาเลือกไฟล์ PDF เท่านั้น";
-      return;
-    }
+const handleNameSearch = () => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchName.value.length >= 2 ? searchByName() : searchResults.value = [];
+  }, 500);
+};
 
-    // Validate file size (10MB max)
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      uploadError.value = "ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 10MB)";
-      return;
-    }
+const selectSearchResult = (r) => {
+  selectedResult.value = r; account.value = r.accountNumber; selectedYear.value = r.year;
+  setTimeout(()=> selectedMonth.value = r.month, 100);
+};
 
-    selectedFile.value = file;
-    uploadError.value = "";
-    uploadMessage.value = "";
-    uploadUrl.value = "";
-  }
+const downloadPdf = () => {
+  if (!pdfUrl.value) return;
+  const a = document.createElement("a");
+  a.href = pdfUrl.value;
+  a.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
+  a.click();
+};
+
+const handleFileUpload = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (f.type !== "application/pdf") return uploadError.value = "เลือก PDF เท่านั้น";
+  if (f.size > 10*1024*1024) return uploadError.value = "ไฟล์เกิน 10MB";
+  selectedFile.value = f; uploadError.value = ""; uploadMessage.value = "";
 };
 
 const clearFile = () => {
-  selectedFile.value = null;
-  uploadMessage.value = "";
-  uploadUrl.value = "";
-  uploadError.value = "";
-  if (fileInput.value) {
-    fileInput.value.value = "";
-  }
+  selectedFile.value = null; uploadMessage.value = ""; uploadError.value = "";
+  if (fileInput.value) fileInput.value.value = "";
 };
 
 const uploadPDF = async () => {
-  if (!selectedFile.value) {
-    uploadError.value = "กรุณาเลือกไฟล์ PDF";
-    return;
-  }
-
-  uploadLoading.value = true;
-  uploadError.value = "";
-  uploadMessage.value = "";
-  uploadUrl.value = "";
-  uploadedFileCount.value = 0; // Reset file count
-
+  if (!selectedFile.value) return uploadError.value = "กรุณาเลือกไฟล์";
+  uploadLoading.value = true; uploadMessage.value = ""; uploadError.value = "";
   try {
-    // Create FormData for file upload
-    const formData = new FormData();
-    formData.append("file", selectedFile.value);
-
-    // Upload to backend API directly
-    const response = await fetch(
-      "https://locknew.pythonanywhere.com/api/upload-slip",
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    const data = await response.json();
-
-    if (response.ok && data.success) {
-      uploadMessage.value = data.message || "อัปโหลดไฟล์สำเร็จ!";
-
-      // Count the uploaded files instead of showing URL
-      if (data.files) {
-        if (Array.isArray(data.files)) {
-          uploadedFileCount.value = data.files.length;
-        } else {
-          uploadedFileCount.value = 1; // Single file uploaded
-        }
-      } else {
-        uploadedFileCount.value = 1; // Fallback if files info not available
-      }
-
-      // Reload uploaded files list
-      await loadUploadedFiles();
-      // Clear the form after successful upload
-      setTimeout(() => {
-        clearFile();
-      }, 2000);
-    } else {
-      throw new Error(data.error || `HTTP error ${response.status}`);
-    }
-  } catch (error) {
-    console.error("Upload error:", error);
-    uploadError.value = error.message || "เกิดข้อผิดพลาดในการอัปโหลดไฟล์";
-  } finally {
-    uploadLoading.value = false;
-  }
+    const form = new FormData(); form.append("file", selectedFile.value);
+    const res = await fetch(`${API_BASE}/upload-slip`, { method:"POST", body:form });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      uploadMessage.value = data.message || "อัปโหลดสำเร็จ!";
+      await loadUploadedFiles(); await fetchAvailableMonths(); clearFile();
+    } else throw new Error(data.error);
+  } catch (e) { uploadError.value = e.message; }
+  finally { uploadLoading.value = false; }
 };
 
 const loadUploadedFiles = async () => {
   try {
-    const response = await fetch(
-      "https://locknew.pythonanywhere.com/api/files/list"
-    );
-    const data = await response.json();
-    if (data.success) {
-      uploadedFiles.value = data.files || [];
-    } else {
-      throw new Error(data.error || "เกิดข้อผิดพลาดในการโหลดไฟล์");
-    }
-  } catch (error) {
-    console.error("Error loading files:", error);
-    uploadError.value = "เกิดข้อผิดพลาดในการโหลดไฟล์";
-  }
+    const data = await api("/files/list?limit=20");
+    if (data.success) uploadedFiles.value = data.files || [];
+  } catch (e) { console.error("loadUploadedFiles:", e); }
 };
 
-const deleteFile = async (filename) => {
-  if (!confirm("คุณแน่ใจหรือไม่ที่จะลบไฟล์นี้?")) {
-    return;
-  }
-
+const deleteFile = async (id) => {
+  if (!confirm("คุณแน่ใจว่าจะลบ?")) return;
   try {
-    const response = await fetch(
-      `https://locknew.pythonanywhere.com/api/files/delete?filename=${encodeURIComponent(
-        filename
-      )}`,
-      { method: "DELETE" }
-    );
-    const data = await response.json();
+    const data = await api(`/files/delete?file_id=${id}`, { method:"DELETE" });
+    if (data.success) uploadedFiles.value = uploadedFiles.value.filter(f=>f._id!==id);
+  } catch (e) { uploadError.value = e.message; }
+};
+
+const viewFile = async (file) => {
+  loading.value = true;
+  try {
+    const data = await api("/get-slip", {
+      method: "POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ account:file.accountNumber, year:file.year, month:file.month })
+    });
     if (data.success) {
-      // Remove from local list
-      uploadedFiles.value = uploadedFiles.value.filter(
-        (file) => file.name !== filename
-      );
-      // Show success message
-      uploadMessage.value = "ลบไฟล์สำเร็จ!";
-      setTimeout(() => {
-        uploadMessage.value = "";
-      }, 3000);
-    } else {
-      throw new Error(data.error || "เกิดข้อผิดพลาดในการลบไฟล์");
+      pdfUrl.value = data.pdfData; currentSlipInfo.value = data.metadata || {};
+      account.value = file.accountNumber; selectedYear.value = file.year; selectedMonth.value = file.month;
     }
-  } catch (error) {
-    console.error("Error deleting file:", error);
-    uploadError.value = error.message || "เกิดข้อผิดพลาดในการลบไฟล์";
-  }
-};
-
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return "0 Bytes";
-  const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-};
-
-const formatDate = (dateString) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  } catch (e) { alert("ดูไฟล์ผิดพลาด"); }
+  finally { loading.value = false; }
 };
 </script>
 
-<style scoped>
+
+
+<style>
+
 .bg-military-gradient {
   background: linear-gradient(
     135deg,
@@ -487,12 +421,274 @@ const formatDate = (dateString) => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
+}
+
+.download-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.pdf-iframe {
+  width: 100%;
+  height: 400px;
+  border: none;
+}
+
+/* Admin Section */
+.admin-section {
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 2px solid #e2e8f0;
+}
+
+.admin-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.admin-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.admin-badge {
+  background: linear-gradient(135deg, #2d5016 0%, #4a7c3a 100%);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.file-input {
+  position: relative;
+  overflow: hidden;
+  display: inline-block;
+  width: 100%;
+}
+
+.file-input input[type="file"] {
+  position: absolute;
+  left: -9999px;
+}
+
+.file-input-label {
+  display: block;
+  width: 100%;
+  padding: 16px;
+  background: #f7fafc;
+  border: 2px dashed #cbd5e0;
+  border-radius: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #718096;
+}
+
+.file-input-label:hover {
+  background: #edf2f7;
+  border-color: #a0aec0;
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f7fafc;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.file-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-name {
+  font-weight: 500;
+  color: #2d3748;
+  font-size: 14px;
+}
+
+.file-size {
+  color: #718096;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.clear-btn {
+  background: #fc8181;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-btn:hover {
+  background: #f56565;
+}
+
+/* Uploaded Files Section */
+.uploaded-files-section {
+  margin-top: 24px;
+  padding: 16px;
+  background: #f7fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.files-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 12px;
+}
+
+.files-list {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
+.file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.file-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.file-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.file-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.view-btn, .delete-btn {
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+}
+
+.view-btn {
+  background: #4299e1;
+  color: white;
+}
+
+.view-btn:hover {
+  background: #3182ce;
+}
+
+.delete-btn {
+  background: #fc8181;
+  color: white;
+}
+
+.delete-btn:hover {
+  background: #f56565;
+}
+
+.success-message {
+  background: #c6f6d5;
+  color: #22543d;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 16px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.error-message {
+  background: #fed7d7;
+  color: #742a2a;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 16px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Custom scrollbar for search results */
+.search-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-results::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.search-results::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 3px;
+}
+
+.search-results::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+.hidden {
+  display: none;
+}
 .login-btn:hover {
   background: #05b04d;
   transform: translateY(-2px);
@@ -540,6 +736,106 @@ const formatDate = (dateString) => {
 .header-subtitle {
   color: #718096;
   font-size: 14px;
+}
+
+/* Search Type Selector */
+.search-type-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.search-type-btn {
+  padding: 12px;
+  background: #f7fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #718096;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.search-type-btn:hover {
+  background: #edf2f7;
+  border-color: #cbd5e0;
+}
+
+.search-type-btn.active {
+  background: linear-gradient(135deg, #3e6b2b 0%, #4a7c3a 50%, #5a8b4a 100%);
+  color: white;
+  border-color: transparent;
+}
+
+/* Search Results */
+.search-results {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-top: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.search-results-header {
+  padding: 8px 12px;
+  background: #edf2f7;
+  font-size: 12px;
+  color: #718096;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+}
+
+.search-result-item {
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.search-result-item:hover {
+  background: #edf2f7;
+}
+
+.search-result-item.selected {
+  background: #c6f6d5;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.result-name {
+  font-weight: 500;
+  color: #2d3748;
+  font-size: 14px;
+}
+
+.result-account {
+  font-size: 12px;
+  color: #718096;
+}
+
+.result-date {
+  font-size: 12px;
+  color: #a0aec0;
 }
 
 .form-group {
@@ -628,6 +924,7 @@ const formatDate = (dateString) => {
   animation: spin 1s ease-in-out infinite;
 }
 
+/* PDF Container */
 .pdf-container {
   margin-top: 32px;
   border-radius: 16px;
@@ -635,152 +932,23 @@ const formatDate = (dateString) => {
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
 }
 
-.pdf-iframe {
-  width: 100%;
-  height: 400px;
-  border: none;
-  border-radius: 16px;
-}
-
-.admin-section {
-  margin-top: 32px;
-  padding-top: 32px;
-  border-top: 2px solid #e2e8f0;
-}
-
-.admin-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.admin-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #2d3748;
-}
-
-.admin-badge {
+.pdf-header {
   background: linear-gradient(135deg, #2d5016 0%, #4a7c3a 100%);
   color: white;
-  padding: 4px 8px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.file-input {
-  position: relative;
-  overflow: hidden;
-  display: inline-block;
-  width: 100%;
-}
-
-.file-input input[type="file"] {
-  position: absolute;
-  left: -9999px;
-}
-
-.file-input-label {
-  display: block;
-  width: 100%;
-  padding: 16px;
-  background: #f7fafc;
-  border: 2px dashed #cbd5e0;
-  border-radius: 12px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  color: #718096;
-}
-
-.file-input-label:hover {
-  background: #edf2f7;
-  border-color: #a0aec0;
-}
-
-.file-preview {
+  padding: 12px 16px;
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  background: #f7fafc;
-  padding: 12px;
+  align-items: center;
+}
+
+.download-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 6px 12px;
   border-radius: 8px;
-  margin-top: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.file-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.file-name {
-  font-weight: 500;
-  color: #2d3748;
   font-size: 14px;
+  cursor:
 }
 
-.file-size {
-  color: #718096;
-  font-size: 12px;
-  margin-top: 2px;
-}
-
-.success-message {
-  background: #c6f6d5;
-  color: #22543d;
-  padding: 12px;
-  border-radius: 8px;
-  margin-top: 16px;
-  font-size: 14px;
-  text-align: center;
-}
-
-.error-message {
-  background: #fed7d7;
-  color: #742a2a;
-  padding: 12px;
-  border-radius: 8px;
-  margin-top: 16px;
-  font-size: 14px;
-  text-align: center;
-}
-
-.fade-in {
-  animation: fadeIn 0.5s ease-in-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.slide-up {
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 </style>
