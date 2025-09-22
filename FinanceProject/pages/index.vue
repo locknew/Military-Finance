@@ -159,8 +159,8 @@ import { ref, onMounted, watch } from "vue";
 import { isAdmin } from "@/utils/isAdmin";
 
 const { $liff } = useNuxtApp();
-const config = useRuntimeConfig(); // <-- use runtime config
-const API_BASE = import.meta.env.VITE_API_BASE || "https://military-finance.onrender.com/api";
+const config = useRuntimeConfig();
+const API_BASE = config.public.apiBase;
 
 // --- State ---
 const searchType = ref("account");

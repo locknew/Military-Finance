@@ -1,7 +1,8 @@
 import liff from '@line/liff'
 
 export default defineNuxtPlugin(() => {
-  const liffId = import.meta.env.VITE_LIFF_ID
+  const config = useRuntimeConfig()
+  const liffId = config.public.liffId
 
   const initResult = liff.init({ liffId })
     .then(() => {

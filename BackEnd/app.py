@@ -13,10 +13,24 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 app = Flask(__name__)
-CORS(app, origins=[
-    "https://dev.finance-cpn.pages.dev",
-    "https://financepj.netlify.app"
-], supports_credentials=True)
+
+# More flexible CORS configuration
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin')
+    # Allow requests from Netlify, Cloudflare Pages, and localhost
+    if origin and (
+        origin.endswith('.netlify.app') or 
+        origin.endswith('.pages.dev') or 
+        origin == 'https://financepj.netlify.app' or
+        origin == 'https://dev.finance-cpn.pages.dev' or
+        origin.startswith('http://localhost')
+    ):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
 
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")

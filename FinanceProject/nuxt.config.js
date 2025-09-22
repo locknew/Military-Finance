@@ -36,5 +36,5 @@ export default {
   components: true,
   buildModules: ['@nuxtjs/eslint-module'],
   build: {},
-  nitro: { preset: 'netlify-legacy' }
+  nitro: { preset: 'netlify' }
 }
