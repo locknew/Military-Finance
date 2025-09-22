@@ -68,8 +68,13 @@
         <!-- Mobile: Show download button and preview message -->
         <div v-else class="mobile-pdf-view">
           <div class="mobile-pdf-icon">📄</div>
-          <p class="mobile-pdf-text">คลิกปุ่ม "ดาวน์โหลด" ด้านบนเพื่อดูสลิปเงินเดือน</p>
-          <button @click="openPdfInNewTab" class="mobile-view-btn">👁️ เปิดดูสลิป</button>
+          <p class="mobile-pdf-text">
+            {{ isInLineApp ? 'คลิกปุ่มด้านล่างเพื่อเปิดสลิปในเบราว์เซอร์ภายนอก' : 'คลิกปุ่ม "ดาวน์โหลด" ด้าศบนเพื่อดูสลิปเงินเดือน' }}
+          </p>
+          <button @click="openPdfInNewTab" class="mobile-view-btn">
+            <span>👁️</span>
+            {{ isInLineApp ? 'เปิดในเบราว์เซอร์' : 'เปิดดูสลิป' }}
+          </button>
         </div>
       </div>
 
@@ -176,6 +181,7 @@ const uploadMessage = ref("");
 const uploadError = ref("");
 const userProfile = ref(null);
 const isMobile = ref(false);
+const isInLineApp = ref(false);
 const THAI_MONTHS = {
   "01": "มกราคม", "02": "กุมภาพันธ์", "03": "มีนาคม",
   "04": "เมษายน", "05": "พฤษภาคม", "06": "มิถุนายน",
@@ -197,6 +203,10 @@ onMounted(async () => {
   
   try {
     await $liff.init({ liffId: config.public.liffId });
+    
+    // Check if running in LINE app
+    isInLineApp.value = $liff.isInClient();
+    
     if ($liff.isLoggedIn()) {
       isLoggedIn.value = true;
       userProfile.value = await $liff.getProfile();
@@ -260,15 +270,37 @@ const handleLogin = () => { isLoggingIn.value = true; $liff.login(); };
 
 const downloadPdf = () => {
   if (!pdfUrl.value) return;
-  const a = document.createElement("a");
-  a.href = pdfUrl.value;
-  a.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
-  a.click();
+  
+  // Check if running in LINE's in-app browser
+  if ($liff && $liff.isInClient()) {
+    // Use LIFF to open in external browser
+    $liff.openWindow({
+      url: pdfUrl.value,
+      external: true
+    });
+  } else {
+    // Normal download for regular browsers
+    const a = document.createElement("a");
+    a.href = pdfUrl.value;
+    a.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
+    a.click();
+  }
 };
 
 const openPdfInNewTab = () => {
   if (!pdfUrl.value) return;
-  window.open(pdfUrl.value, '_blank');
+  
+  // Check if running in LINE's in-app browser
+  if ($liff && $liff.isInClient()) {
+    // Use LIFF to open in external browser
+    $liff.openWindow({
+      url: pdfUrl.value,
+      external: true
+    });
+  } else {
+    // Open in new tab for regular browsers
+    window.open(pdfUrl.value, '_blank');
+  }
 };
 
 const handleFileUpload = (e) => {
