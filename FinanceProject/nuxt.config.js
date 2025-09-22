@@ -22,6 +22,7 @@ export default {
     public: {
       liffId: process.env.VITE_LIFF_ID,
       liffRedirectUri: 'https://financepj.netlify.app',
+      apiBase: process.env.VITE_API_BASE,
     }
   },
   app: {

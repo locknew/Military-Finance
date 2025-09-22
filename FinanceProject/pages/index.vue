@@ -157,7 +157,10 @@
 <script setup>
 import { ref, onMounted, watch } from "vue";
 import { isAdmin } from "@/utils/isAdmin";
+
 const { $liff } = useNuxtApp();
+const config = useRuntimeConfig(); // <-- use runtime config
+const API_BASE = config.public.apiBase; // <-- now dynamic from .env
 
 // --- State ---
 const searchType = ref("account");
@@ -189,7 +192,6 @@ const uploadError = ref("");
 const userProfile = ref(null);
 
 // --- Constants ---
-const API_BASE = "https://military-finance.onrender.com/api";
 const THAI_MONTHS = {
   "01": "มกราคม", "02": "กุมภาพันธ์", "03": "มีนาคม",
   "04": "เมษายน", "05": "พฤษภาคม", "06": "มิถุนายน",
@@ -206,7 +208,7 @@ const formatFileSize = (b) => !b ? "0 Bytes" :
 // --- Lifecycle ---
 onMounted(async () => {
   try {
-    await $liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
+    await $liff.init({ liffId: config.public.liffId });
     if ($liff.isLoggedIn()) {
       isLoggedIn.value = true;
       userProfile.value = await $liff.getProfile();
@@ -360,6 +362,7 @@ const viewFile = async (file) => {
   finally { loading.value = false; }
 };
 </script>
+
 
 
 
