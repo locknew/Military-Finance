@@ -62,19 +62,18 @@
           <button @click="downloadPdf" class="download-btn">💾 ดาวน์โหลด</button>
         </div>
         
-        <!-- Desktop: Show iframe -->
-        <iframe v-if="!isMobile" :src="pdfUrl" class="pdf-iframe"></iframe>
-        
-        <!-- Mobile: Show download button and preview message -->
-        <div v-else class="mobile-pdf-view">
-          <div class="mobile-pdf-icon">📄</div>
-          <p class="mobile-pdf-text">
-            {{ isInLineApp ? 'คลิกปุ่มด้านล่างเพื่อเปิดสลิปในเบราว์เซอร์ภายนอก' : 'คลิกปุ่ม "ดาวน์โหลด" ด้าศบนเพื่อดูสลิปเงินเดือน' }}
-          </p>
-          <button @click="openPdfInNewTab" class="mobile-view-btn">
-            <span>👁️</span>
-            {{ isInLineApp ? 'เปิดในเบราว์เซอร์' : 'เปิดดูสลิป' }}
-          </button>
+        <!-- Canvas-based PDF viewer for all devices -->
+        <div class="pdf-viewer-container">
+          <canvas ref="pdfCanvas" class="pdf-canvas"></canvas>
+          <div v-if="totalPages > 1" class="pdf-navigation">
+            <button @click="previousPage" :disabled="currentPage <= 1" class="nav-btn">◀️</button>
+            <span class="page-info">หน้า {{ currentPage }} / {{ totalPages }}</span>
+            <button @click="nextPage" :disabled="currentPage >= totalPages" class="nav-btn">▶️</button>
+          </div>
+          <div v-if="pdfLoading" class="pdf-loading">
+            <div class="spinner"></div>
+            <p>กำลังโหลด PDF...</p>
+          </div>
         </div>
       </div>
 
@@ -161,6 +160,11 @@ const selectedMonth = ref("");
 
 const pdfUrl = ref("");
 const currentSlipInfo = ref({});
+const pdfCanvas = ref(null);
+const currentPage = ref(1);
+const totalPages = ref(0);
+const pdfLoading = ref(false);
+let pdfDoc = null;
 
 const deleteYear = ref("");
 const deleteMonth = ref("");
@@ -200,6 +204,19 @@ const formatFileSize = (b) => !b ? "0 Bytes" :
 onMounted(async () => {
   // Detect mobile device
   isMobile.value = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  // Load PDF.js library
+  if (typeof window !== 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.async = true;
+    document.head.appendChild(script);
+    
+    script.onload = () => {
+      // Set worker source
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    };
+  }
   
   try {
     await $liff.init({ liffId: config.public.liffId });
@@ -260,9 +277,80 @@ const getSlip = async () => {
     if (data.success) {
       pdfUrl.value = data.pdfData;
       currentSlipInfo.value = data.metadata || {};
+      // Render PDF after getting the data
+      await renderPDF(data.pdfData);
     } else throw new Error(data.error);
   } catch (e) { alert(e.message || "โหลดสลิปผิดพลาด"); }
   finally { loading.value = false; }
+};
+
+// PDF.js rendering functions
+const renderPDF = async (pdfDataUrl) => {
+  if (!window.pdfjsLib || !pdfCanvas.value) {
+    console.error('PDF.js not loaded or canvas not ready');
+    return;
+  }
+  
+  pdfLoading.value = true;
+  
+  try {
+    // Load PDF document
+    const loadingTask = window.pdfjsLib.getDocument(pdfDataUrl);
+    pdfDoc = await loadingTask.promise;
+    totalPages.value = pdfDoc.numPages;
+    currentPage.value = 1;
+    
+    // Render first page
+    await renderPage(1);
+  } catch (error) {
+    console.error('Error loading PDF:', error);
+    alert('เกิดข้อผิดพลาดในการโหลด PDF');
+  } finally {
+    pdfLoading.value = false;
+  }
+};
+
+const renderPage = async (pageNumber) => {
+  if (!pdfDoc || !pdfCanvas.value) return;
+  
+  try {
+    const page = await pdfDoc.getPage(pageNumber);
+    const canvas = pdfCanvas.value;
+    const context = canvas.getContext('2d');
+    
+    // Calculate scale to fit container
+    const container = canvas.parentElement;
+    const containerWidth = container.clientWidth - 40; // padding
+    const viewport = page.getViewport({ scale: 1 });
+    const scale = containerWidth / viewport.width;
+    const scaledViewport = page.getViewport({ scale });
+    
+    // Set canvas dimensions
+    canvas.height = scaledViewport.height;
+    canvas.width = scaledViewport.width;
+    
+    // Render PDF page
+    const renderContext = {
+      canvasContext: context,
+      viewport: scaledViewport
+    };
+    
+    await page.render(renderContext).promise;
+  } catch (error) {
+    console.error('Error rendering page:', error);
+  }
+};
+
+const nextPage = async () => {
+  if (currentPage.value >= totalPages.value) return;
+  currentPage.value++;
+  await renderPage(currentPage.value);
+};
+
+const previousPage = async () => {
+  if (currentPage.value <= 1) return;
+  currentPage.value--;
+  await renderPage(currentPage.value);
 };
 
 // --- Handlers ---
@@ -271,35 +359,48 @@ const handleLogin = () => { isLoggingIn.value = true; $liff.login(); };
 const downloadPdf = () => {
   if (!pdfUrl.value) return;
   
-  // Check if running in LINE's in-app browser
-  if ($liff && $liff.isInClient()) {
-    // Use LIFF to open in external browser
-    $liff.openWindow({
-      url: pdfUrl.value,
-      external: true
-    });
-  } else {
-    // Normal download for regular browsers
-    const a = document.createElement("a");
-    a.href = pdfUrl.value;
-    a.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
-    a.click();
-  }
-};
-
-const openPdfInNewTab = () => {
-  if (!pdfUrl.value) return;
-  
-  // Check if running in LINE's in-app browser
-  if ($liff && $liff.isInClient()) {
-    // Use LIFF to open in external browser
-    $liff.openWindow({
-      url: pdfUrl.value,
-      external: true
-    });
-  } else {
-    // Open in new tab for regular browsers
-    window.open(pdfUrl.value, '_blank');
+  try {
+    // Extract base64 data from data URL
+    const base64Data = pdfUrl.value.split(',')[1];
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    
+    // Check if running in LINE's in-app browser
+    if ($liff && $liff.isInClient()) {
+      // For LINE app, use sendMessages to share or create download link
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Fallback: Show instruction to user
+      setTimeout(() => {
+        alert('หากไม่สามารถดาวน์โหลดได้ กรุณากดปุ่ม "..." ที่มุมขวาบน แล้วเลือก "เปิดในเบราว์เซอร์ภายนอก"');
+      }, 500);
+      
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } else {
+      // Normal download for regular browsers
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+    }
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    alert('เกิดข้อผิดพลาดในการดาวน์โหลด กรุณาลองใหม่');
   }
 };
 
@@ -437,6 +538,87 @@ const deleteSlipsByPeriod = async () => {
   width: 100%;
   height: 400px;
   border: none;
+}
+
+/* PDF Viewer Container */
+.pdf-viewer-container {
+  position: relative;
+  background: #f7fafc;
+  padding: 20px;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pdf-canvas {
+  max-width: 100%;
+  height: auto;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background: white;
+}
+
+.pdf-navigation {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 12px 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.nav-btn {
+  background: linear-gradient(135deg, #3e6b2b 0%, #4a7c3a 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.nav-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(74, 124, 58, 0.3);
+}
+
+.nav-btn:disabled {
+  background: #cbd5e0;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.page-info {
+  font-weight: 600;
+  color: #2d3748;
+  font-size: 14px;
+}
+
+.pdf-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: #4a5568;
+}
+
+.pdf-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #4a7c3a;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 12px;
+}
+
+.pdf-loading p {
+  margin: 0;
+  font-size: 14px;
 }
 
 /* Mobile PDF View */
