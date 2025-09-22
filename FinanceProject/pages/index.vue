@@ -1,14 +1,15 @@
 <template>
-  <div class="min-h-screen bg-military-gradient flex items-center justify-center p-5">
+  <div class="min-h-screen bg-military-gradient flex flex-col items-center justify-center p-5">
+
     <!-- Login Screen -->
     <div v-if="!isLoggedIn" class="login-container fade-in">
-      <div class="login-header">
-        <div class="login-icon">🪖</div>
-        <h1 class="login-title">ระบบสลิปเงินเดือนทหาร</h1>
-        <p class="login-subtitle">เข้าสู่ระบบด้วย LINE</p>
+      <div class="login-header text-center">
+        <div class="login-icon text-4xl">🪖</div>
+        <h1 class="login-title text-2xl font-bold mt-2">ระบบสลิปเงินเดือนทหาร</h1>
+        <p class="login-subtitle mt-1">เข้าสู่ระบบด้วย LINE</p>
       </div>
 
-      <button @click="handleLogin" class="login-btn" :disabled="isLoggingIn">
+      <button @click="handleLogin" class="login-btn mt-4" :disabled="isLoggingIn">
         <span v-if="isLoggingIn" class="spinner"></span>
         <span v-else>💬</span>
         {{ isLoggingIn ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบด้วย LINE" }}
@@ -16,131 +17,88 @@
     </div>
 
     <!-- Main App -->
-    <div v-else class="container fade-in">
+    <div v-else class="w-full max-w-4xl fade-in">
       <!-- Header -->
-      <div class="header">
-        <span class="header-icon">🪖</span>
-        <h1 class="header-title">ตรวจสอบสลิปเงินเดือน</h1>
-        <p class="header-subtitle">ระบบตรวจสอบสลิปเงินเดือนทหาร</p>
+      <div class="header text-center mb-6">
+        <span class="header-icon text-3xl">🪖</span>
+        <h1 class="header-title text-xl font-bold mt-2">ตรวจสอบสลิปเงินเดือน</h1>
+        <p class="header-subtitle text-sm mt-1">ระบบตรวจสอบสลิปเงินเดือนทหาร</p>
       </div>
 
-      <!-- Account Input -->
-      <div class="form-group">
-        <label class="form-label">เลขบัญชี</label>
-        <input v-model="account" placeholder="กรอกเลขบัญชีของคุณ" class="input" />
+      <!-- Account & Period Selection -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <input v-model="account" placeholder="เลขบัญชี" class="input p-2 border rounded" />
+        <select v-model="selectedYear" class="input p-2 border rounded">
+          <option value="">เลือกปี</option>
+          <option v-for="y in availableYears" :key="y">{{ y }}</option>
+        </select>
+        <select v-model="selectedMonth" class="input p-2 border rounded" :disabled="!selectedYear">
+          <option value="">เลือกเดือน</option>
+          <option v-for="m in availableMonths" :key="m" :value="m">{{ getMonthName(m) }}</option>
+        </select>
       </div>
 
-      <!-- Year / Month Select -->
-      <div class="form-group">
-        <label class="form-label">เลือกช่วงเวลา</label>
-        <div class="grid">
-          <select v-model="selectedYear" class="input">
-            <option value="">เลือกปี</option>
-            <option v-for="y in availableYears" :key="y">{{ y }}</option>
-          </select>
-
-          <select v-model="selectedMonth" class="input" :disabled="!selectedYear">
-            <option value="">เลือกเดือน</option>
-            <option v-for="m in availableMonths" :key="m" :value="m">
-              {{ getMonthName(m) }}
-            </option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Show Slip -->
-      <button @click="getSlip" class="btn" :disabled="loading">
+      <!-- Show Slip Button -->
+      <button @click="getSlip" class="btn mb-4" :disabled="loading">
         <span v-if="loading" class="loading"></span>
         <span v-else>📥</span>
         {{ loading ? "กำลังโหลด..." : "แสดงสลิปเงินเดือน" }}
       </button>
 
       <!-- PDF Viewer -->
-      <div v-if="pdfUrl" class="pdf-container slide-up">
-        <div class="pdf-header">
+      <div v-if="pdfUrl" class="pdf-container border p-2 rounded mb-4">
+        <div class="flex justify-between items-center mb-2">
           <span v-if="currentSlipInfo.name">{{ currentSlipInfo.rank }} {{ currentSlipInfo.name }}</span>
-          <button @click="downloadPdf" class="download-btn">💾 ดาวน์โหลด</button>
+          <button @click="downloadPdf" class="btn-download">💾 ดาวน์โหลด</button>
         </div>
-        
-        <!-- Canvas-based PDF viewer for all devices -->
-        <div class="pdf-viewer-container">
-          <canvas ref="pdfCanvas" class="pdf-canvas"></canvas>
-          <div v-if="totalPages > 1" class="pdf-navigation">
-            <button @click="previousPage" :disabled="currentPage <= 1" class="nav-btn">◀️</button>
-            <span class="page-info">หน้า {{ currentPage }} / {{ totalPages }}</span>
-            <button @click="nextPage" :disabled="currentPage >= totalPages" class="nav-btn">▶️</button>
-          </div>
-          <div v-if="pdfLoading" class="pdf-loading">
-            <div class="spinner"></div>
-            <p>กำลังโหลด PDF...</p>
-          </div>
+
+        <canvas ref="pdfCanvas" class="w-full border"></canvas>
+        <div v-if="totalPages > 1" class="flex justify-center items-center mt-2 gap-2">
+          <button @click="previousPage" :disabled="currentPage <= 1" class="nav-btn">◀️</button>
+          <span>หน้า {{ currentPage }} / {{ totalPages }}</span>
+          <button @click="nextPage" :disabled="currentPage >= totalPages" class="nav-btn">▶️</button>
+        </div>
+        <div v-if="pdfLoading" class="text-center mt-2">
+          <div class="spinner mx-auto"></div>
+          <p>กำลังโหลด PDF...</p>
         </div>
       </div>
 
       <!-- Admin Panel -->
-      <div v-if="isAdminUser" class="admin-section slide-up">
-        <div class="admin-header">
-          <h3>อัปโหลดไฟล์ PDF</h3><span class="admin-badge">ADMIN</span>
+      <div v-if="isAdminUser" class="admin-section border p-4 rounded mt-6">
+        <h3 class="font-bold mb-2">อัปโหลดไฟล์ PDF <span class="text-red-500 ml-2">ADMIN</span></h3>
+        <div class="mb-2">
+          <input type="file" accept=".pdf" @change="handleFileUpload" ref="fileInput" />
+          <span v-if="selectedFile">{{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})</span>
+          <button v-if="selectedFile" @click="clearFile">✕</button>
         </div>
-
-        <!-- Upload -->
-        <div class="form-group">
-          <div class="file-input">
-            <input id="file-upload" type="file" accept=".pdf" @change="handleFileUpload" ref="fileInput" hidden />
-            <label for="file-upload" class="file-input-label">📄 คลิกเพื่อเลือกไฟล์ PDF</label>
-          </div>
-
-          <div v-if="selectedFile" class="file-preview">
-            <span>{{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})</span>
-            <button @click="clearFile" class="clear-btn">✕</button>
-          </div>
-        </div>
-
-        <button @click="uploadPDF" class="btn" :disabled="uploadLoading || !selectedFile">
-          <span v-if="uploadLoading" class="loading"></span>
-          <span v-else>🚀</span>
-          {{ uploadLoading ? "กำลังอัปโหลด..." : "อัปโหลด" }}
+        <button @click="uploadPDF" :disabled="!selectedFile || uploadLoading" class="btn mb-2">
+          {{ uploadLoading ? "กำลังอัปโหลด..." : "🚀 อัปโหลด" }}
         </button>
+        <div v-if="uploadMessage" class="text-green-600">{{ uploadMessage }}</div>
+        <div v-if="uploadError" class="text-red-600">❌ {{ uploadError }}</div>
 
-        <div v-if="uploadMessage" class="success-message">{{ uploadMessage }}</div>
-        <div v-if="uploadError" class="error-message">❌ {{ uploadError }}</div>
-
-        <!-- Delete Controls -->
-        <div class="delete-section">
-          <div class="admin-header">
-            <h3>ลบสลิปเงินเดือน</h3>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">เลือกช่วงเวลาที่ต้องการลบ</label>
-            <div class="grid">
-              <select v-model="deleteYear" class="input">
-                <option value="">เลือกปี</option>
-                <option v-for="y in availableYears" :key="y">{{ y }}</option>
-              </select>
-
-              <select v-model="deleteMonth" class="input" :disabled="!deleteYear">
-                <option value="">ทั้งหมด</option>
-                <option v-for="m in getMonthsForYear(deleteYear)" :key="m" :value="m">
-                  {{ getMonthName(m) }}
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <button @click="deleteSlipsByPeriod" class="btn-delete" :disabled="!deleteYear || deleteLoading">
-            <span v-if="deleteLoading" class="loading"></span>
-            <span v-else>🗑️</span>
-            {{ deleteLoading ? "กำลังลบ..." : deleteMonth ? `ลบสลิปเดือน ${getMonthName(deleteMonth)} ${deleteYear}` : `ลบสลิปทั้งปี ${deleteYear}` }}
-          </button>
-
-          <div v-if="deleteMessage" class="success-message">{{ deleteMessage }}</div>
-          <div v-if="deleteError" class="error-message">❌ {{ deleteError }}</div>
+        <h3 class="font-bold mt-4 mb-2">ลบสลิปเงินเดือน</h3>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <select v-model="deleteYear" class="input p-2 border rounded">
+            <option value="">เลือกปี</option>
+            <option v-for="y in availableYears" :key="y">{{ y }}</option>
+          </select>
+          <select v-model="deleteMonth" class="input p-2 border rounded" :disabled="!deleteYear">
+            <option value="">ทั้งหมด</option>
+            <option v-for="m in getMonthsForYear(deleteYear)" :key="m" :value="m">{{ getMonthName(m) }}</option>
+          </select>
         </div>
+        <button @click="deleteSlipsByPeriod" :disabled="!deleteYear || deleteLoading" class="btn-delete">
+          {{ deleteLoading ? "กำลังลบ..." : deleteMonth ? `ลบสลิปเดือน ${getMonthName(deleteMonth)} ${deleteYear}` : `ลบสลิปทั้งปี ${deleteYear}` }}
+        </button>
+        <div v-if="deleteMessage" class="text-green-600 mt-1">{{ deleteMessage }}</div>
+        <div v-if="deleteError" class="text-red-600 mt-1">❌ {{ deleteError }}</div>
       </div>
     </div>
   </div>
 </template>
+
 <script setup>
 import { ref, onMounted, watch } from "vue";
 import { isAdmin } from "@/utils/isAdmin";
@@ -155,7 +113,7 @@ const availableYears = ref([]);
 const availableMonths = ref([]);
 const selectedYear = ref("");
 const selectedMonth = ref("");
-const pdfUrl = ref("");        // Blob URL
+const pdfUrl = ref(""); // Blob URL
 const currentSlipInfo = ref({});
 const pdfCanvas = ref(null);
 const currentPage = ref(1);
@@ -169,7 +127,7 @@ const isLoggedIn = ref(false);
 const isLoggingIn = ref(false);
 const loading = ref(false);
 
-// Upload + Delete state
+// Upload / Delete state
 const selectedFile = ref(null);
 const fileInput = ref(null);
 const uploadLoading = ref(false);
@@ -181,63 +139,37 @@ const deleteLoading = ref(false);
 const deleteMessage = ref("");
 const deleteError = ref("");
 
-// Misc
-const userProfile = ref(null);
-const isMobile = ref(false);
-const isInLineApp = ref(false);
-const THAI_MONTHS = {
-  "01": "มกราคม", "02": "กุมภาพันธ์", "03": "มีนาคม",
-  "04": "เมษายน", "05": "พฤษภาคม", "06": "มิถุนายน",
-  "07": "กรกฎาคม", "08": "สิงหาคม", "09": "กันยายน",
-  "10": "ตุลาคม", "11": "พฤศจิกายน", "12": "ธันวาคม"
-};
-
-// --- Utils ---
-const getMonthName = (m) => THAI_MONTHS[m] || m;
+// --- Month Utils ---
+const THAI_MONTHS = { "01":"มกราคม","02":"กุมภาพันธ์","03":"มีนาคม","04":"เมษายน","05":"พฤษภาคม","06":"มิถุนายน","07":"กรกฎาคม","08":"สิงหาคม","09":"กันยายน","10":"ตุลาคม","11":"พฤศจิกายน","12":"ธันวาคม" };
+const getMonthName = m => THAI_MONTHS[m] || m;
+let yearMonthData = {};
 const getMonthsForYear = (year) => yearMonthData[year] || [];
 
 // --- Lifecycle ---
 onMounted(async () => {
-  isMobile.value = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
   // Load PDF.js
   if (typeof window !== "undefined") {
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
     script.async = true;
     document.head.appendChild(script);
-
-    script.onload = () => {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    };
+    script.onload = () => window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   }
 
+  // LIFF login
   try {
     await $liff.init({ liffId: config.public.liffId });
-    isInLineApp.value = $liff.isInClient();
-
     if ($liff.isLoggedIn()) {
       isLoggedIn.value = true;
-      userProfile.value = await $liff.getProfile();
-      if (isAdmin(userProfile.value.userId)) {
-        isAdminUser.value = true;
-      }
+      const profile = await $liff.getProfile();
+      if (isAdmin(profile.userId)) isAdminUser.value = true;
       await fetchAvailableMonths();
     }
-  } catch (e) {
-    console.error("LIFF init failed:", e);
-  }
+  } catch (e) { console.error("LIFF init failed:", e); }
 });
 
 // --- Watchers ---
-watch(selectedYear, (y) => {
-  availableMonths.value = yearMonthData[y] || [];
-  selectedMonth.value = "";
-});
-
-// --- Data cache ---
-let yearMonthData = {};
+watch(selectedYear, (y) => { availableMonths.value = yearMonthData[y] || []; selectedMonth.value = ""; });
 
 // --- API ---
 const fetchAvailableMonths = async () => {
@@ -246,132 +178,77 @@ const fetchAvailableMonths = async () => {
     const data = await res.json();
     if (data.success && data.data) {
       yearMonthData = data.data;
-      availableYears.value = Object.keys(data.data).sort((a, b) => b - a);
+      availableYears.value = Object.keys(data.data).sort((a,b)=>b-a);
     }
-  } catch (e) {
-    console.error("fetchAvailableMonths:", e);
-  }
+  } catch(e){ console.error(e); }
 };
 
 // --- Get Slip ---
 const getSlip = async () => {
-  if (!account.value || !selectedYear.value || !selectedMonth.value) {
-    alert("กรุณากรอกข้อมูลให้ครบถ้วน");
-    return;
-  }
+  if (!account.value || !selectedYear.value || !selectedMonth.value) { alert("กรุณากรอกข้อมูลให้ครบ"); return; }
   loading.value = true;
-  pdfUrl.value = "";
-  currentSlipInfo.value = {};
-
+  pdfUrl.value = ""; currentSlipInfo.value = {};
   try {
     const res = await fetch(`${API_BASE}/get-slip`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        account: account.value,
-        year: selectedYear.value,
-        month: selectedMonth.value,
-      }),
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ account: account.value, year: selectedYear.value, month: selectedMonth.value })
     });
-
     if (!res.ok) throw new Error("ไม่พบไฟล์สลิป");
-
-    // Backend should return raw PDF
     const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    pdfUrl.value = blobUrl;
-
-    // Optional: if backend also returns metadata
-    const metadata = res.headers.get("x-slip-meta");
-    if (metadata) currentSlipInfo.value = JSON.parse(metadata);
-
-    await renderPDF(blobUrl);
-  } catch (e) {
-    alert(e.message || "โหลดสลิปผิดพลาด");
-  } finally {
-    loading.value = false;
-  }
+    pdfUrl.value = URL.createObjectURL(blob);
+    await renderPDF(pdfUrl.value);
+  } catch(e){ alert(e.message || "โหลดสลิปผิดพลาด"); }
+  finally{ loading.value = false; }
 };
 
-// --- PDF.js rendering ---
+// --- PDF.js ---
 const renderPDF = async (url) => {
   if (!window.pdfjsLib || !pdfCanvas.value) return;
-
   pdfLoading.value = true;
   try {
-    const loadingTask = window.pdfjsLib.getDocument(url);
-    pdfDoc = await loadingTask.promise;
-    totalPages.value = pdfDoc.numPages;
-    currentPage.value = 1;
+    pdfDoc = await window.pdfjsLib.getDocument(url).promise;
+    totalPages.value = pdfDoc.numPages; currentPage.value = 1;
     await renderPage(1);
-  } catch (error) {
-    console.error("Error loading PDF:", error);
-    alert("เกิดข้อผิดพลาดในการโหลด PDF");
-  } finally {
-    pdfLoading.value = false;
-  }
+  } catch(e){ console.error(e); alert("โหลด PDF ผิดพลาด"); }
+  finally{ pdfLoading.value = false; }
 };
 
-const renderPage = async (pageNumber) => {
+const renderPage = async (num) => {
   if (!pdfDoc || !pdfCanvas.value) return;
-  const page = await pdfDoc.getPage(pageNumber);
+  const page = await pdfDoc.getPage(num);
   const canvas = pdfCanvas.value;
   const context = canvas.getContext("2d");
-
-  const container = canvas.parentElement;
-  const containerWidth = container.clientWidth - 40;
-  const viewport = page.getViewport({ scale: 1 });
-  const scale = containerWidth / viewport.width;
-  const scaledViewport = page.getViewport({ scale });
-
-  canvas.height = scaledViewport.height;
-  canvas.width = scaledViewport.width;
-
-  await page.render({ canvasContext: context, viewport: scaledViewport }).promise;
+  const containerWidth = canvas.parentElement.clientWidth - 20;
+  const scale = containerWidth / page.getViewport({ scale: 1 }).width;
+  const viewport = page.getViewport({ scale });
+  canvas.width = viewport.width; canvas.height = viewport.height;
+  await page.render({ canvasContext: context, viewport }).promise;
 };
 
-const nextPage = async () => {
-  if (currentPage.value < totalPages.value) {
-    currentPage.value++;
-    await renderPage(currentPage.value);
-  }
-};
-const previousPage = async () => {
-  if (currentPage.value > 1) {
-    currentPage.value--;
-    await renderPage(currentPage.value);
-  }
-};
+const nextPage = async () => { if(currentPage.value<totalPages.value){ currentPage.value++; await renderPage(currentPage.value); } };
+const previousPage = async () => { if(currentPage.value>1){ currentPage.value--; await renderPage(currentPage.value); } };
 
 // --- Download PDF ---
-const downloadPdf = async () => {
-  if (!pdfUrl.value) return;
-  try {
-    const res = await fetch(pdfUrl.value);
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-  } catch (error) {
-    console.error("Error downloading PDF:", error);
-    alert("เกิดข้อผิดพลาดในการดาวน์โหลด กรุณาลองใหม่");
-  }
+const downloadPdf = () => {
+  if(!pdfUrl.value) return;
+  const a = document.createElement("a");
+  a.href = pdfUrl.value;
+  a.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 };
 
-// --- LIFF ---
-const handleLogin = () => {
-  isLoggingIn.value = true;
-  $liff.login();
-};
+// --- File Upload ---
+const handleFileUpload = (e) => { selectedFile.value = e.target.files[0]; };
+const clearFile = () => { selectedFile.value = null; fileInput.value.value = null; };
+const uploadPDF = async () => { /* implement upload logic */ };
+
+// --- Delete ---
+const deleteSlipsByPeriod = async () => { /* implement delete logic */ };
+
+// --- LIFF Login ---
+const handleLogin = () => { isLoggingIn.value = true; $liff.login(); };
 </script>
-
 
 
 

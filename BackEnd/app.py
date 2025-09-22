@@ -71,7 +71,7 @@ def upload_slip():
         if not file.filename.lower().endswith(".pdf"):
             return jsonify({"success": False, "error": "กรุณาอัปโหลดไฟล์ PDF เท่านั้น"}), 400
 
-        pdf_content = file.read()
+        pdf_content = file.read()  # raw bytes
 
         processor = PDFProcessor()
         extracted_slips = processor.process_pdf(pdf_content)
@@ -79,6 +79,9 @@ def upload_slip():
         inserted_count, updated_count = 0, 0
 
         for slip_data in extracted_slips:
+            # Convert pdf bytes to Binary for MongoDB
+            slip_data["pdfData"] = Binary(slip_data["pdfData"])
+
             existing = payslips_collection.find_one({
                 "accountNumber": slip_data["accountNumber"],
                 "year": slip_data["year"],
@@ -124,26 +127,25 @@ def get_slip():
             "month": str(month).zfill(2)
         })
 
-        if not slip:
+        if not slip or "pdfData" not in slip:
             return jsonify({"success": False, "error": "ไม่พบสลิปเงินเดือน"}), 404
 
-        if "pdfData" in slip:
-            pdf_base64 = base64.b64encode(slip["pdfData"]).decode("utf-8")
-            pdf_data_url = f"data:application/pdf;base64,{pdf_base64}"
+        # pdfData is stored as raw binary, convert to base64 for browser
+        pdf_base64 = base64.b64encode(slip["pdfData"]).decode("utf-8")
+        pdf_data_url = f"data:application/pdf;base64,{pdf_base64}"
 
-            return jsonify({
-                "success": True,
-                "pdfData": pdf_data_url,
-                "metadata": {
-                    "name": slip.get("name", ""),
-                    "rank": slip.get("rank", "")
-                }
-            })
-
-        return jsonify({"success": False, "error": "ไม่พบข้อมูล PDF"}), 404
+        return jsonify({
+            "success": True,
+            "pdfData": pdf_data_url,
+            "metadata": {
+                "name": slip.get("name", ""),
+                "rank": slip.get("rank", "")
+            }
+        })
 
     except Exception as e:
         return jsonify({"success": False, "error": f"เกิดข้อผิดพลาด: {str(e)}"}), 500
+
 
 
 @app.route("/api/available-months", methods=["GET"])
