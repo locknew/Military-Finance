@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pymongo import MongoClient
-from bson import ObjectId
+from bson import ObjectId, Binary
 import os
 from datetime import datetime
 from dotenv import load_dotenv
@@ -71,7 +71,7 @@ def upload_slip():
         if not file.filename.lower().endswith(".pdf"):
             return jsonify({"success": False, "error": "กรุณาอัปโหลดไฟล์ PDF เท่านั้น"}), 400
 
-        pdf_content = file.read()  # raw bytes
+        pdf_content = file.read()
 
         processor = PDFProcessor()
         extracted_slips = processor.process_pdf(pdf_content)
@@ -79,9 +79,10 @@ def upload_slip():
         inserted_count, updated_count = 0, 0
 
         for slip_data in extracted_slips:
-            # Convert pdf bytes to Binary for MongoDB
+            # Store PDF as Binary BSON type for MongoDB
             slip_data["pdfData"] = Binary(slip_data["pdfData"])
-
+            slip_data["uploadedAt"] = datetime.utcnow()
+            
             existing = payslips_collection.find_one({
                 "accountNumber": slip_data["accountNumber"],
                 "year": slip_data["year"],
@@ -127,25 +128,33 @@ def get_slip():
             "month": str(month).zfill(2)
         })
 
-        if not slip or "pdfData" not in slip:
+        if not slip:
             return jsonify({"success": False, "error": "ไม่พบสลิปเงินเดือน"}), 404
 
-        # pdfData is stored as raw binary, convert to base64 for browser
-        pdf_base64 = base64.b64encode(slip["pdfData"]).decode("utf-8")
-        pdf_data_url = f"data:application/pdf;base64,{pdf_base64}"
+        if "pdfData" in slip:
+            # Convert Binary/bytes to base64
+            pdf_bytes = slip["pdfData"]
+            if isinstance(pdf_bytes, Binary):
+                pdf_bytes = bytes(pdf_bytes)
+            
+            pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
+            
+            return jsonify({
+                "success": True,
+                "pdfBase64": pdf_base64,
+                "metadata": {
+                    "name": slip.get("name", ""),
+                    "rank": slip.get("rank", ""),
+                    "accountNumber": slip.get("accountNumber", ""),
+                    "year": slip.get("year", ""),
+                    "month": slip.get("month", "")
+                }
+            })
 
-        return jsonify({
-            "success": True,
-            "pdfData": pdf_data_url,
-            "metadata": {
-                "name": slip.get("name", ""),
-                "rank": slip.get("rank", "")
-            }
-        })
+        return jsonify({"success": False, "error": "ไม่พบข้อมูล PDF"}), 404
 
     except Exception as e:
         return jsonify({"success": False, "error": f"เกิดข้อผิดพลาด: {str(e)}"}), 500
-
 
 
 @app.route("/api/available-months", methods=["GET"])
@@ -178,6 +187,7 @@ def list_files():
         year = request.args.get("year")
         month = request.args.get("month")
         account = request.args.get("account")
+        limit = int(request.args.get("limit", 100))
 
         if year:
             query["year"] = year
@@ -189,10 +199,12 @@ def list_files():
         files = list(payslips_collection.find(
             query,
             {"pdfData": 0}
-        ).sort("uploadedAt", -1).limit(100))
+        ).sort("uploadedAt", -1).limit(limit))
 
         for file in files:
             file["_id"] = str(file["_id"])
+            if "uploadedAt" in file:
+                file["uploadedAt"] = file["uploadedAt"].isoformat()
 
         return jsonify({"success": True, "files": files})
 
@@ -228,31 +240,6 @@ def delete_file():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/files/delete-by-period", methods=["DELETE"])
-def delete_by_period():
-    try:
-        year = request.args.get("year")
-        month = request.args.get("month")
-
-        if not year:
-            return jsonify({"success": False, "error": "ต้องระบุปี"}), 400
-
-        query = {"year": year}
-        if month:
-            query["month"] = month
-
-        result = payslips_collection.delete_many(query)
-
-        return jsonify({
-            "success": True,
-            "message": f"ลบสำเร็จ {result.deleted_count} รายการ",
-            "deletedCount": result.deleted_count
-        })
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
 @app.route("/api/search", methods=["POST"])
 def search_slips():
     try:
@@ -276,6 +263,8 @@ def search_slips():
 
         for result in results:
             result["_id"] = str(result["_id"])
+            if "uploadedAt" in result:
+                result["uploadedAt"] = result["uploadedAt"].isoformat()
 
         return jsonify({"success": True, "results": results})
 
