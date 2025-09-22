@@ -141,7 +141,6 @@
     </div>
   </div>
 </template>
-
 <script setup>
 import { ref, onMounted, watch } from "vue";
 import { isAdmin } from "@/utils/isAdmin";
@@ -152,13 +151,11 @@ const API_BASE = config.public.apiBase;
 
 // --- State ---
 const account = ref("");
-
 const availableYears = ref([]);
 const availableMonths = ref([]);
 const selectedYear = ref("");
 const selectedMonth = ref("");
-
-const pdfUrl = ref("");
+const pdfUrl = ref("");        // Blob URL
 const currentSlipInfo = ref({});
 const pdfCanvas = ref(null);
 const currentPage = ref(1);
@@ -166,23 +163,25 @@ const totalPages = ref(0);
 const pdfLoading = ref(false);
 let pdfDoc = null;
 
+// Admin / Auth state
+const isAdminUser = ref(false);
+const isLoggedIn = ref(false);
+const isLoggingIn = ref(false);
+const loading = ref(false);
+
+// Upload + Delete state
+const selectedFile = ref(null);
+const fileInput = ref(null);
+const uploadLoading = ref(false);
+const uploadMessage = ref("");
+const uploadError = ref("");
 const deleteYear = ref("");
 const deleteMonth = ref("");
 const deleteLoading = ref(false);
 const deleteMessage = ref("");
 const deleteError = ref("");
 
-const selectedFile = ref(null);
-const fileInput = ref(null);
-
-const isAdminUser = ref(false);
-const isLoggedIn = ref(false);
-const isLoggingIn = ref(false);
-const loading = ref(false);
-const uploadLoading = ref(false);
-
-const uploadMessage = ref("");
-const uploadError = ref("");
+// Misc
 const userProfile = ref(null);
 const isMobile = ref(false);
 const isInLineApp = ref(false);
@@ -196,34 +195,28 @@ const THAI_MONTHS = {
 // --- Utils ---
 const getMonthName = (m) => THAI_MONTHS[m] || m;
 const getMonthsForYear = (year) => yearMonthData[year] || [];
-const formatFileSize = (b) => !b ? "0 Bytes" : 
-  (["Bytes","KB","MB","GB"])[Math.floor(Math.log(b)/Math.log(1024))] ?
-  `${(b/Math.pow(1024,Math.floor(Math.log(b)/Math.log(1024)))).toFixed(2)} ${["Bytes","KB","MB","GB"][Math.floor(Math.log(b)/Math.log(1024))]}` : "0 Bytes";
 
 // --- Lifecycle ---
 onMounted(async () => {
-  // Detect mobile device
   isMobile.value = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  
-  // Load PDF.js library
-  if (typeof window !== 'undefined') {
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+
+  // Load PDF.js
+  if (typeof window !== "undefined") {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
     script.async = true;
     document.head.appendChild(script);
-    
+
     script.onload = () => {
-      // Set worker source
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     };
   }
-  
+
   try {
     await $liff.init({ liffId: config.public.liffId });
-    
-    // Check if running in LINE app
     isInLineApp.value = $liff.isInClient();
-    
+
     if ($liff.isLoggedIn()) {
       isLoggedIn.value = true;
       userProfile.value = await $liff.getProfile();
@@ -246,65 +239,74 @@ watch(selectedYear, (y) => {
 // --- Data cache ---
 let yearMonthData = {};
 
-// --- API Calls ---
-const api = async (url, opts={}) => {
-  const res = await fetch(`${API_BASE}${url}`, opts);
-  return res.json();
-};
-
+// --- API ---
 const fetchAvailableMonths = async () => {
   try {
-    const data = await api("/available-months");
+    const res = await fetch(`${API_BASE}/available-months`);
+    const data = await res.json();
     if (data.success && data.data) {
       yearMonthData = data.data;
-      availableYears.value = Object.keys(data.data).sort((a,b)=>b-a);
+      availableYears.value = Object.keys(data.data).sort((a, b) => b - a);
     }
   } catch (e) {
     console.error("fetchAvailableMonths:", e);
   }
 };
 
+// --- Get Slip ---
 const getSlip = async () => {
   if (!account.value || !selectedYear.value || !selectedMonth.value) {
-    alert("กรุณากรอกข้อมูลให้ครบถ้วน"); return;
-  }
-  loading.value = true; pdfUrl.value = ""; currentSlipInfo.value = {};
-  try {
-    const data = await api("/get-slip", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ account: account.value, year: selectedYear.value, month: selectedMonth.value })
-    });
-    if (data.success) {
-      pdfUrl.value = data.pdfData;
-      currentSlipInfo.value = data.metadata || {};
-      // Render PDF after getting the data
-      await renderPDF(data.pdfData);
-    } else throw new Error(data.error);
-  } catch (e) { alert(e.message || "โหลดสลิปผิดพลาด"); }
-  finally { loading.value = false; }
-};
-
-// PDF.js rendering functions
-const renderPDF = async (pdfDataUrl) => {
-  if (!window.pdfjsLib || !pdfCanvas.value) {
-    console.error('PDF.js not loaded or canvas not ready');
+    alert("กรุณากรอกข้อมูลให้ครบถ้วน");
     return;
   }
-  
-  pdfLoading.value = true;
-  
+  loading.value = true;
+  pdfUrl.value = "";
+  currentSlipInfo.value = {};
+
   try {
-    // Load PDF document
-    const loadingTask = window.pdfjsLib.getDocument(pdfDataUrl);
+    const res = await fetch(`${API_BASE}/get-slip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        account: account.value,
+        year: selectedYear.value,
+        month: selectedMonth.value,
+      }),
+    });
+
+    if (!res.ok) throw new Error("ไม่พบไฟล์สลิป");
+
+    // Backend should return raw PDF
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    pdfUrl.value = blobUrl;
+
+    // Optional: if backend also returns metadata
+    const metadata = res.headers.get("x-slip-meta");
+    if (metadata) currentSlipInfo.value = JSON.parse(metadata);
+
+    await renderPDF(blobUrl);
+  } catch (e) {
+    alert(e.message || "โหลดสลิปผิดพลาด");
+  } finally {
+    loading.value = false;
+  }
+};
+
+// --- PDF.js rendering ---
+const renderPDF = async (url) => {
+  if (!window.pdfjsLib || !pdfCanvas.value) return;
+
+  pdfLoading.value = true;
+  try {
+    const loadingTask = window.pdfjsLib.getDocument(url);
     pdfDoc = await loadingTask.promise;
     totalPages.value = pdfDoc.numPages;
     currentPage.value = 1;
-    
-    // Render first page
     await renderPage(1);
   } catch (error) {
-    console.error('Error loading PDF:', error);
-    alert('เกิดข้อผิดพลาดในการโหลด PDF');
+    console.error("Error loading PDF:", error);
+    alert("เกิดข้อผิดพลาดในการโหลด PDF");
   } finally {
     pdfLoading.value = false;
   }
@@ -312,160 +314,64 @@ const renderPDF = async (pdfDataUrl) => {
 
 const renderPage = async (pageNumber) => {
   if (!pdfDoc || !pdfCanvas.value) return;
-  
-  try {
-    const page = await pdfDoc.getPage(pageNumber);
-    const canvas = pdfCanvas.value;
-    const context = canvas.getContext('2d');
-    
-    // Calculate scale to fit container
-    const container = canvas.parentElement;
-    const containerWidth = container.clientWidth - 40; // padding
-    const viewport = page.getViewport({ scale: 1 });
-    const scale = containerWidth / viewport.width;
-    const scaledViewport = page.getViewport({ scale });
-    
-    // Set canvas dimensions
-    canvas.height = scaledViewport.height;
-    canvas.width = scaledViewport.width;
-    
-    // Render PDF page
-    const renderContext = {
-      canvasContext: context,
-      viewport: scaledViewport
-    };
-    
-    await page.render(renderContext).promise;
-  } catch (error) {
-    console.error('Error rendering page:', error);
-  }
+  const page = await pdfDoc.getPage(pageNumber);
+  const canvas = pdfCanvas.value;
+  const context = canvas.getContext("2d");
+
+  const container = canvas.parentElement;
+  const containerWidth = container.clientWidth - 40;
+  const viewport = page.getViewport({ scale: 1 });
+  const scale = containerWidth / viewport.width;
+  const scaledViewport = page.getViewport({ scale });
+
+  canvas.height = scaledViewport.height;
+  canvas.width = scaledViewport.width;
+
+  await page.render({ canvasContext: context, viewport: scaledViewport }).promise;
 };
 
 const nextPage = async () => {
-  if (currentPage.value >= totalPages.value) return;
-  currentPage.value++;
-  await renderPage(currentPage.value);
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++;
+    await renderPage(currentPage.value);
+  }
 };
-
 const previousPage = async () => {
-  if (currentPage.value <= 1) return;
-  currentPage.value--;
-  await renderPage(currentPage.value);
+  if (currentPage.value > 1) {
+    currentPage.value--;
+    await renderPage(currentPage.value);
+  }
 };
 
-// --- Handlers ---
-const handleLogin = () => { isLoggingIn.value = true; $liff.login(); };
-
-const downloadPdf = () => {
+// --- Download PDF ---
+const downloadPdf = async () => {
   if (!pdfUrl.value) return;
-  
   try {
-    // Extract base64 data from data URL
-    const base64Data = pdfUrl.value.split(',')[1];
-    const byteCharacters = atob(base64Data);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'application/pdf' });
-    
-    // Check if running in LINE's in-app browser
-    if ($liff && $liff.isInClient()) {
-      // For LINE app, use sendMessages to share or create download link
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Fallback: Show instruction to user
-      setTimeout(() => {
-        alert('หากไม่สามารถดาวน์โหลดได้ กรุณากดปุ่ม "..." ที่มุมขวาบน แล้วเลือก "เปิดในเบราว์เซอร์ภายนอก"');
-      }, 500);
-      
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-    } else {
-      // Normal download for regular browsers
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
-    }
+    const res = await fetch(pdfUrl.value);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   } catch (error) {
-    console.error('Error downloading PDF:', error);
-    alert('เกิดข้อผิดพลาดในการดาวน์โหลด กรุณาลองใหม่');
+    console.error("Error downloading PDF:", error);
+    alert("เกิดข้อผิดพลาดในการดาวน์โหลด กรุณาลองใหม่");
   }
 };
 
-const handleFileUpload = (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  if (f.type !== "application/pdf") return uploadError.value = "เลือก PDF เท่านั้น";
-  if (f.size > 10*1024*1024) return uploadError.value = "ไฟล์เกิน 10MB";
-  selectedFile.value = f; uploadError.value = ""; uploadMessage.value = "";
-};
-
-const clearFile = () => {
-  selectedFile.value = null; uploadMessage.value = ""; uploadError.value = "";
-  if (fileInput.value) fileInput.value.value = "";
-};
-
-const uploadPDF = async () => {
-  if (!selectedFile.value) return uploadError.value = "กรุณาเลือกไฟล์";
-  uploadLoading.value = true; uploadMessage.value = ""; uploadError.value = "";
-  try {
-    const form = new FormData(); form.append("file", selectedFile.value);
-    const res = await fetch(`${API_BASE}/upload-slip`, { method:"POST", body:form });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      uploadMessage.value = data.message || "อัปโหลดสำเร็จ!";
-      await fetchAvailableMonths(); clearFile();
-    } else throw new Error(data.error);
-  } catch (e) { uploadError.value = e.message; }
-  finally { uploadLoading.value = false; }
-};
-
-const deleteSlipsByPeriod = async () => {
-  if (!deleteYear.value) return;
-  
-  const confirmMsg = deleteMonth.value 
-    ? `คุณแน่ใจว่าต้องการลบสลิปทั้งหมดของเดือน ${getMonthName(deleteMonth.value)} ${deleteYear.value}?`
-    : `คุณแน่ใจว่าต้องการลบสลิปทั้งหมดของปี ${deleteYear.value}?`;
-  
-  if (!confirm(confirmMsg)) return;
-  
-  deleteLoading.value = true; deleteMessage.value = ""; deleteError.value = "";
-  try {
-    let url = `${API_BASE}/files/delete-by-period?year=${deleteYear.value}`;
-    if (deleteMonth.value) {
-      url += `&month=${deleteMonth.value}`;
-    }
-    
-    const res = await fetch(url, { method: "DELETE" });
-    const data = await res.json();
-    
-    if (res.ok && data.success) {
-      deleteMessage.value = `ลบสำเร็จ ${data.deletedCount} รายการ`;
-      await fetchAvailableMonths();
-      deleteYear.value = "";
-      deleteMonth.value = "";
-    } else {
-      throw new Error(data.error || "เกิดข้อผิดพลาดในการลบ");
-    }
-  } catch (e) {
-    deleteError.value = e.message;
-  } finally {
-    deleteLoading.value = false;
-  }
+// --- LIFF ---
+const handleLogin = () => {
+  isLoggingIn.value = true;
+  $liff.login();
 };
 </script>
+
 
 
 
