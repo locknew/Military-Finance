@@ -7,7 +7,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import base64
 from pdf_processor import PDFProcessor
-
+import io
 # Load .env file BEFORE using os.getenv
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
