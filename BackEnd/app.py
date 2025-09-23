@@ -296,6 +296,67 @@ def health_check():
         return jsonify({"status": "healthy", "message": "API and database are running"})
     except Exception:
         return jsonify({"status": "unhealthy", "message": "Database connection failed"}), 500
+    
+
+@app.route("/api/get-download-url", methods=["POST"])
+def get_download_url():
+    """Generate a download URL for the PDF"""
+    try:
+        data = request.get_json(force=True)
+        account = data.get("account")
+        year = data.get("year")
+        month = data.get("month")
+
+        if not all([account, year, month]):
+            return jsonify({"success": False, "error": "กรุณาระบุข้อมูลให้ครบถ้วน"}), 400
+
+        # Build the download URL
+        download_url = f"{request.host_url}api/download-pdf?account={account}&year={year}&month={month}"
+
+        return jsonify({
+            "success": True,
+            "downloadUrl": download_url
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/download-pdf", methods=["GET"])
+def download_pdf():
+    """Serve the PDF file for download"""
+    try:
+        account = request.args.get("account")
+        year = request.args.get("year")
+        month = request.args.get("month")
+
+        if not all([account, year, month]):
+            return jsonify({"success": False, "error": "กรุณาระบุข้อมูลให้ครบถ้วน"}), 400
+
+        slip = payslips_collection.find_one({
+            "accountNumber": account,
+            "year": str(year),
+            "month": str(month).zfill(2)
+        })
+
+        if not slip or "pdfData" not in slip:
+            return jsonify({"success": False, "error": "ไม่พบสลิปเงินเดือน"}), 404
+
+        # Create a file-like object from the PDF data
+        pdf_io = io.BytesIO(slip["pdfData"])
+        
+        # Generate filename
+        filename = f"slip_{account}_{month}_{year}.pdf"
+
+        return send_file(
+            pdf_io,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":

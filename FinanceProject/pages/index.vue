@@ -324,17 +324,24 @@ const selectSearchResult = (r) => {
 
 const downloadPdf = () => {
   if (!pdfUrl.value) return;
-  const link = document.createElement("a");
-  link.href = pdfUrl.value;
-  link.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
-
-const openPdfNewTab = () => {
-  if (!pdfUrl.value) return;
-  window.open(pdfUrl.value, '_blank');
+  
+  if ($liff.isInClient()) {
+    // If in LINE app, construct backend download URL and open in external browser
+    const downloadUrl = `${API_BASE}/download-pdf?account=${account.value}&year=${selectedYear.value}&month=${selectedMonth.value}`;
+    
+    $liff.openWindow({
+      url: downloadUrl,
+      external: true
+    });
+  } else {
+    // Fallback for web browser - trigger normal download using data URL
+    const a = document.createElement("a");
+    a.href = pdfUrl.value;
+    a.download = `slip_${account.value}_${selectedMonth.value}_${selectedYear.value}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 };
 
 const handleFileUpload = (e) => {
