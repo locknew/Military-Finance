@@ -24,53 +24,10 @@
         <p class="header-subtitle">ระบบตรวจสอบสลิปเงินเดือนทหาร</p>
       </div>
 
-      <!-- Search Type -->
+      <!-- Account Input (Name search removed) -->
       <div class="form-group">
-        <label class="form-label">วิธีค้นหา</label>
-        <div class="search-type-buttons">
-          <button
-            v-for="type in ['account','name']"
-            :key="type"
-            @click="searchType = type"
-            :class="['search-type-btn', { active: searchType === type }]"
-          >
-            <span>{{ type === 'account' ? '🔢' : '👤' }}</span>
-            {{ type === 'account' ? 'เลขบัญชี' : 'ชื่อ-นามสกุล' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Account Input -->
-      <div v-if="searchType === 'account'" class="form-group">
         <label class="form-label">เลขบัญชี</label>
         <input v-model="account" placeholder="กรอกเลขบัญชีของคุณ" class="input" />
-      </div>
-
-      <!-- Name Input + Search -->
-      <div v-if="searchType === 'name'" class="form-group">
-        <label class="form-label">ชื่อ-นามสกุล</label>
-        <input
-          v-model="searchName"
-          placeholder="กรอกชื่อหรือนามสกุล"
-          class="input"
-          @input="handleNameSearch"
-        />
-
-        <div v-if="searchResults.length" class="search-results">
-          <div class="search-results-header">พบ {{ searchResults.length }} รายการ</div>
-          <div
-            v-for="result in searchResults"
-            :key="result._id"
-            @click="selectSearchResult(result)"
-            :class="['search-result-item', { selected: selectedResult?._id === result._id }]"
-          >
-            <div class="result-info">
-              <span>{{ result.rank }} {{ result.name }}</span>
-              <span>{{ result.accountNumber }}</span>
-            </div>
-            <span class="result-date">{{ result.month }}/{{ result.year }}</span>
-          </div>
-        </div>
       </div>
 
       <!-- Year / Month Select -->
@@ -102,22 +59,12 @@
       <div v-if="pdfUrl" class="pdf-container slide-up">
         <div class="pdf-header">
           <span v-if="currentSlipInfo.name">{{ currentSlipInfo.rank }} {{ currentSlipInfo.name }}</span>
-          <button @click="downloadPdf" class="download-btn">💾 ดาวน์โหลด</button>
+          <!-- Download button only visible on mobile -->
+          <button v-if="isMobile" @click="downloadPdf" class="download-btn">💾 ดาวน์โหลด</button>
         </div>
         
-        <!-- Mobile: Use object tag for better compatibility -->
-        <div v-if="isMobile" class="pdf-mobile-container">
-          <object :data="pdfUrl" type="application/pdf" class="pdf-object">
-            <div class="pdf-fallback">
-              <p>ไม่สามารถแสดง PDF ได้บนอุปกรณ์นี้</p>
-              <button @click="openPdfNewTab" class="btn-open-pdf">เปิดในหน้าต่างใหม่</button>
-              <button @click="downloadPdf" class="btn-download-pdf">ดาวน์โหลด PDF</button>
-            </div>
-          </object>
-        </div>
-        
-        <!-- Desktop: Use iframe -->
-        <iframe v-else :src="pdfUrl" class="pdf-iframe"></iframe>
+        <!-- Iframe only visible on desktop -->
+        <iframe v-if="!isMobile" :src="pdfUrl" class="pdf-iframe"></iframe>
       </div>
 
       <!-- Admin Panel -->
@@ -309,19 +256,6 @@ const getSlip = async () => {
 
 // --- Handlers ---
 const handleLogin = () => { isLoggingIn.value = true; $liff.login(); };
-
-const handleNameSearch = () => {
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    searchName.value.length >= 2 ? searchByName() : searchResults.value = [];
-  }, 500);
-};
-
-const selectSearchResult = (r) => {
-  selectedResult.value = r; account.value = r.accountNumber; selectedYear.value = r.year;
-  setTimeout(()=> selectedMonth.value = r.month, 100);
-};
-
 const downloadPdf = () => {
   if (!pdfUrl.value) return;
   
