@@ -240,6 +240,44 @@ def delete_file():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/files/delete-month", methods=["DELETE"])
+def delete_month_slips():
+    """Delete all slips for a specific month and year"""
+    try:
+        year = request.args.get("year")
+        month = request.args.get("month")
+
+        if not all([year, month]):
+            return jsonify({
+                "success": False, 
+                "error": "กรุณาระบุปีและเดือน"
+            }), 400
+
+        # Delete all documents matching the year and month
+        result = payslips_collection.delete_many({
+            "year": str(year),
+            "month": str(month).zfill(2)
+        })
+
+        if result.deleted_count > 0:
+            return jsonify({
+                "success": True,
+                "message": f"ลบสลิปสำเร็จ {result.deleted_count} รายการ",
+                "deletedCount": result.deleted_count
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "ไม่พบสลิปในเดือนและปีที่ระบุ"
+            }), 404
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"เกิดข้อผิดพลาด: {str(e)}"
+        }), 500
+
+
 @app.route("/api/search", methods=["POST"])
 def search_slips():
     try:

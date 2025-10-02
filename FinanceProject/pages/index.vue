@@ -97,17 +97,64 @@
 
         <!-- File list -->
         <div v-if="uploadedFiles.length" class="uploaded-files-section">
-          <h4>ไฟล์ที่อัปโหลดแล้ว</h4>
-          <div v-for="file in uploadedFiles" :key="file._id" class="file-item">
-            <div>
-              <span>{{ file.rank }} {{ file.name || file.accountNumber }}</span>
-              <span>{{ file.month }}/{{ file.year }}</span>
-            </div>
-            <div>
-              <button @click="viewFile(file)">👁️</button>
-              <button @click="deleteFile(file._id)">🗑️</button>
+          <h4 class="files-title">ไฟล์ที่อัปโหลดแล้ว</h4>
+          <div class="files-list">
+            <div v-for="file in uploadedFiles" :key="file._id" class="file-item">
+              <div class="file-details">
+                <div class="file-name">{{ file.rank }} {{ file.name || file.accountNumber }}</div>
+                <div class="file-size">{{ file.month }}/{{ file.year }}</div>
+              </div>
+              <div class="file-actions">
+                <button @click="viewFile(file)" class="view-btn" title="ดูไฟล์">👁️</button>
+                <button @click="deleteFile(file._id)" class="delete-btn" title="ลบไฟล์">🗑️</button>
+              </div>
             </div>
           </div>
+        </div>
+
+        <!-- Delete Section for Month/Year -->
+        <div class="delete-section">
+          <div class="admin-header">
+            <h3 class="admin-title">ลบสลิปทั้งเดือน</h3>
+            <span class="admin-badge">⚠️ DANGER</span>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">เลือกเดือน/ปีที่ต้องการลบ</label>
+            <div class="grid">
+              <select v-model="deleteYear" class="input">
+                <option value="">เลือกปี</option>
+                <option v-for="y in availableYears" :key="y">{{ y }}</option>
+              </select>
+
+              <select v-model="deleteMonth" class="input" :disabled="!deleteYear">
+                <option value="">เลือกเดือน</option>
+                <option v-for="m in getDeleteMonths()" :key="m" :value="m">
+                  {{ getMonthName(m) }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div v-if="deleteYear && deleteMonth" class="form-group">
+            <div class="success-message" style="background: #fff3cd; color: #856404; border: 1px solid #ffeaa7;">
+              ⚠️ คุณกำลังจะลบสลิปทั้งหมดของเดือน {{ getMonthName(deleteMonth) }} พ.ศ. {{ deleteYear }}
+              <br><strong>จำนวน: {{ getSlipCount(deleteYear, deleteMonth) }} รายการ</strong>
+            </div>
+          </div>
+
+          <button 
+            @click="deleteMonthSlips" 
+            class="btn-delete" 
+            :disabled="deleteLoading || !deleteYear || !deleteMonth"
+          >
+            <span v-if="deleteLoading" class="loading"></span>
+            <span v-else>🗑️</span>
+            {{ deleteLoading ? "กำลังลบ..." : "ลบสลิปทั้งเดือน" }}
+          </button>
+
+          <div v-if="deleteMessage" class="success-message">{{ deleteMessage }}</div>
+          <div v-if="deleteError" class="error-message">❌ {{ deleteError }}</div>
         </div>
       </div>
     </div>
@@ -133,6 +180,13 @@ const availableYears = ref([]);
 const availableMonths = ref([]);
 const selectedYear = ref("");
 const selectedMonth = ref("");
+
+// Delete state
+const deleteYear = ref("");
+const deleteMonth = ref("");
+const deleteLoading = ref(false);
+const deleteMessage = ref("");
+const deleteError = ref("");
 
 const pdfUrl = ref("");
 const currentSlipInfo = ref({});
@@ -172,6 +226,15 @@ const formatFileSize = (b) => {
   return `${(b / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
 };
 
+const getDeleteMonths = () => {
+  return deleteYear.value ? (yearMonthData[deleteYear.value] || []) : [];
+};
+
+const getSlipCount = (year, month) => {
+  if (!year || !month) return 0;
+  return uploadedFiles.value.filter(f => f.year === year && f.month === month).length;
+};
+
 // --- Lifecycle ---
 onMounted(async () => {
   // Detect mobile
@@ -197,6 +260,12 @@ onMounted(async () => {
 watch(selectedYear, (y) => {
   availableMonths.value = yearMonthData[y] || [];
   selectedMonth.value = "";
+});
+
+watch(deleteYear, () => {
+  deleteMonth.value = "";
+  deleteMessage.value = "";
+  deleteError.value = "";
 });
 
 // --- Data cache ---
@@ -254,6 +323,58 @@ const getSlip = async () => {
   finally { loading.value = false; }
 };
 
+// --- Delete Month Slips ---
+const deleteMonthSlips = async () => {
+  if (!deleteYear.value || !deleteMonth.value) {
+    deleteError.value = "กรุณาเลือกเดือนและปี";
+    return;
+  }
+
+  const slipCount = getSlipCount(deleteYear.value, deleteMonth.value);
+  const confirmMsg = `คุณแน่ใจหรือไม่ที่จะลบสลิปทั้งหมด ${slipCount} รายการ\nของเดือน ${getMonthName(deleteMonth.value)} พ.ศ. ${deleteYear.value}?\n\n⚠️ การกระทำนี้ไม่สามารถย้อนกลับได้!`;
+  
+  if (!confirm(confirmMsg)) return;
+
+  deleteLoading.value = true;
+  deleteMessage.value = "";
+  deleteError.value = "";
+
+  try {
+    // Use the bulk delete endpoint
+    const result = await api(
+      `/files/delete-month?year=${deleteYear.value}&month=${deleteMonth.value}`, 
+      { method: "DELETE" }
+    );
+    
+    if (result.success) {
+      deleteMessage.value = `✅ ${result.message}`;
+      
+      // Refresh data
+      await loadUploadedFiles();
+      await fetchAvailableMonths();
+      
+      // Reset form
+      deleteYear.value = "";
+      deleteMonth.value = "";
+      
+      // Clear message after 5 seconds
+      setTimeout(() => {
+        deleteMessage.value = "";
+      }, 5000);
+    } else {
+      throw new Error(result.error || "ไม่สามารถลบได้");
+    }
+
+  } catch (e) {
+    deleteError.value = e.message || "เกิดข้อผิดพลาดในการลบ";
+    setTimeout(() => {
+      deleteError.value = "";
+    }, 5000);
+  } finally {
+    deleteLoading.value = false;
+  }
+};
+
 // --- Handlers ---
 const handleLogin = () => { isLoggingIn.value = true; $liff.login(); };
 const downloadPdf = () => {
@@ -308,7 +429,7 @@ const uploadPDF = async () => {
 
 const loadUploadedFiles = async () => {
   try {
-    const data = await api("/files/list?limit=20");
+    const data = await api("/files/list?limit=1000");
     if (data.success) uploadedFiles.value = data.files || [];
   } catch (e) { console.error("loadUploadedFiles:", e); }
 };
@@ -320,6 +441,7 @@ const deleteFile = async (id) => {
     if (data.success) {
       uploadedFiles.value = uploadedFiles.value.filter(f=>f._id!==id);
       uploadMessage.value = "ลบไฟล์สำเร็จ";
+      await fetchAvailableMonths();
     }
   } catch (e) { uploadError.value = e.message; }
 };
