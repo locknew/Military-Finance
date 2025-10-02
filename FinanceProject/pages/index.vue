@@ -139,7 +139,7 @@
           <div v-if="deleteYear && deleteMonth" class="form-group">
             <div class="success-message" style="background: #fff3cd; color: #856404; border: 1px solid #ffeaa7;">
               ⚠️ คุณกำลังจะลบสลิปทั้งหมดของเดือน {{ getMonthName(deleteMonth) }} พ.ศ. {{ deleteYear }}
-              <br><strong>จำนวน: {{ getSlipCount(deleteYear, deleteMonth) }} รายการ</strong>
+              <br><strong>จำนวน: {{ deleteSlipCount }} รายการ</strong>
             </div>
           </div>
 
@@ -187,6 +187,7 @@ const deleteMonth = ref("");
 const deleteLoading = ref(false);
 const deleteMessage = ref("");
 const deleteError = ref("");
+const deleteSlipCount = ref(0);
 
 const pdfUrl = ref("");
 const currentSlipInfo = ref({});
@@ -230,9 +231,21 @@ const getDeleteMonths = () => {
   return deleteYear.value ? (yearMonthData[deleteYear.value] || []) : [];
 };
 
-const getSlipCount = (year, month) => {
-  if (!year || !month) return 0;
-  return uploadedFiles.value.filter(f => f.year === year && f.month === month).length;
+const fetchDeleteSlipCount = async () => {
+  if (!deleteYear.value || !deleteMonth.value) {
+    deleteSlipCount.value = 0;
+    return;
+  }
+  
+  try {
+    const data = await api(`/files/count?year=${deleteYear.value}&month=${deleteMonth.value}`);
+    if (data.success) {
+      deleteSlipCount.value = data.count;
+    }
+  } catch (e) {
+    console.error("fetchDeleteSlipCount:", e);
+    deleteSlipCount.value = 0;
+  }
 };
 
 // --- Lifecycle ---
@@ -266,6 +279,17 @@ watch(deleteYear, () => {
   deleteMonth.value = "";
   deleteMessage.value = "";
   deleteError.value = "";
+  deleteSlipCount.value = 0;
+});
+
+watch(deleteMonth, () => {
+  deleteMessage.value = "";
+  deleteError.value = "";
+  if (deleteMonth.value) {
+    fetchDeleteSlipCount();
+  } else {
+    deleteSlipCount.value = 0;
+  }
 });
 
 // --- Data cache ---
@@ -330,8 +354,7 @@ const deleteMonthSlips = async () => {
     return;
   }
 
-  const slipCount = getSlipCount(deleteYear.value, deleteMonth.value);
-  const confirmMsg = `คุณแน่ใจหรือไม่ที่จะลบสลิปทั้งหมด ${slipCount} รายการ\nของเดือน ${getMonthName(deleteMonth.value)} พ.ศ. ${deleteYear.value}?\n\n⚠️ การกระทำนี้ไม่สามารถย้อนกลับได้!`;
+  const confirmMsg = `คุณแน่ใจหรือไม่ที่จะลบสลิปทั้งหมด ${deleteSlipCount.value} รายการ\nของเดือน ${getMonthName(deleteMonth.value)} พ.ศ. ${deleteYear.value}?\n\n⚠️ การกระทำนี้ไม่สามารถย้อนกลับได้!`;
   
   if (!confirm(confirmMsg)) return;
 
@@ -356,6 +379,7 @@ const deleteMonthSlips = async () => {
       // Reset form
       deleteYear.value = "";
       deleteMonth.value = "";
+      deleteSlipCount.value = 0;
       
       // Clear message after 5 seconds
       setTimeout(() => {
