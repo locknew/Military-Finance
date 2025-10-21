@@ -15,7 +15,7 @@ class LINEMessagingService:
     def __init__(self):
         self.channel_access_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
         self.api_base = "https://api.line.me/v2/bot"
-        self.liff_url = os.getenv("LIFF_URL", "https://financepj.netlify.app")
+        self.liff_url = os.getenv("LIFF_URL")
         
         if not self.channel_access_token:
             print("⚠️ Warning: LINE_CHANNEL_ACCESS_TOKEN not set")
@@ -66,17 +66,6 @@ class LINEMessagingService:
             }
     
     def create_simple_slip_notification(self, month, year):
-        """
-        Create a simple notification message
-        Example: "ตรวจสอบสลิปเงินเดือน ต.ค. 68 ได้ที่ https://..."
-        
-        Args:
-            month: Month number (01-12)
-            year: Buddhist year (e.g., "2568")
-            
-        Returns:
-            list: List of LINE message objects
-        """
         # Get short month name (e.g., "ต.ค.")
         month_short = self.THAI_MONTHS_SHORT.get(month, month)
         
@@ -84,7 +73,7 @@ class LINEMessagingService:
         year_short = str(year)[-2:]
         
         # Create simple message
-        text_message = f"ตรวจสอบสลิปเงินเดือน {month_short} {year_short} ได้ที่ {self.liff_url}"
+        text_message = f"ระบบได้ทำการอัปโหลดสลิปเงินเดือน {month_short} {year_short} แล้ว สามารถตรวจสอบได้ที่ {self.liff_url}"
         
         messages = [
             {
