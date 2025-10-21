@@ -11,7 +11,9 @@ import io
 # Load .env file BEFORE using os.getenv
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
-
+from Line_messaging import LINEMessagingService
+# Initialize LINE service after app initialization
+line_service = LINEMessagingService()
 app = Flask(__name__)
 
 # More flexible CORS configuration
@@ -77,11 +79,20 @@ def upload_slip():
         extracted_slips = processor.process_pdf(pdf_content)
 
         inserted_count, updated_count = 0, 0
+        
+        # Track the month and year for notification
+        notification_month = None
+        notification_year = None
 
         for slip_data in extracted_slips:
             # Store PDF as Binary BSON type for MongoDB
             slip_data["pdfData"] = Binary(slip_data["pdfData"])
             slip_data["uploadedAt"] = datetime.utcnow()
+            
+            # Capture month and year for notification
+            if not notification_month:
+                notification_month = slip_data["month"]
+                notification_year = slip_data["year"]
             
             existing = payslips_collection.find_one({
                 "accountNumber": slip_data["accountNumber"],
@@ -98,6 +109,20 @@ def upload_slip():
             else:
                 payslips_collection.insert_one(slip_data)
                 inserted_count += 1
+
+        # Send simple broadcast notification to all users
+        if notification_month and notification_year:
+            messages = line_service.create_simple_slip_notification(
+                notification_month, 
+                notification_year
+            )
+            
+            broadcast_result = line_service.send_broadcast(messages)
+            
+            if broadcast_result.get("success"):
+                print(f"✅ Broadcast sent successfully for {notification_month}/{notification_year}")
+            else:
+                print(f"⚠️ Broadcast failed: {broadcast_result.get('error')}")
 
         return jsonify({
             "success": True,
