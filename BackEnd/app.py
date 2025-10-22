@@ -50,14 +50,124 @@ except Exception as e:
     raise e
 
 db = client[DB_NAME]
-payslips_collection = db["payslips"]
 
-# Create indexes
+##ADMIN##
+admins_collection = db["admins"]
+admins_collection.create_index([("email", 1)], unique=True)
+
+##SLIPS##
+payslips_collection = db["payslips"]
 payslips_collection.create_index([("accountNumber", 1)])
 payslips_collection.create_index([("year", 1), ("month", 1)])
 payslips_collection.create_index(
     [("accountNumber", 1), ("year", 1), ("month", 1)], unique=True
 )
+
+@app.route("/api/admin/check", methods=["POST"])
+def check_admin():
+    """Check if email is admin"""
+    try:
+        data = request.get_json(force=True)
+        email = data.get("email")
+        
+        if not email:
+            return jsonify({"success": False, "error": "ไม่พบอีเมล"}), 400
+        
+        admin = admins_collection.find_one({"email": email})
+        
+        return jsonify({
+            "success": True,
+            "isAdmin": admin is not None
+        })
+    
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/list", methods=["GET"])
+def list_admins():
+    """List all admin emails"""
+    try:
+        admins = list(admins_collection.find({}, {"_id": 0, "email": 1, "addedAt": 1}))
+        
+        for admin in admins:
+            if "addedAt" in admin:
+                admin["addedAt"] = admin["addedAt"].isoformat()
+        
+        return jsonify({
+            "success": True,
+            "admins": admins
+        })
+    
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/add", methods=["POST"])
+def add_admin():
+    """Add new admin email"""
+    try:
+        data = request.get_json(force=True)
+        email = data.get("email")
+        requester_email = data.get("requesterEmail")
+        
+        if not email:
+            return jsonify({"success": False, "error": "กรุณาระบุอีเมล"}), 400
+        
+        # Check if requester is admin
+        if not admins_collection.find_one({"email": requester_email}):
+            return jsonify({"success": False, "error": "ไม่มีสิทธิ์เพิ่ม Admin"}), 403
+        
+        # Check if already exists
+        if admins_collection.find_one({"email": email}):
+            return jsonify({"success": False, "error": "อีเมลนี้เป็น Admin อยู่แล้ว"}), 400
+        
+        admins_collection.insert_one({
+            "email": email,
+            "addedAt": datetime.utcnow()
+        })
+        
+        return jsonify({
+            "success": True,
+            "message": f"เพิ่ม Admin สำเร็จ: {email}"
+        })
+    
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/remove", methods=["DELETE"])
+def remove_admin():
+    """Remove admin email"""
+    try:
+        email = request.args.get("email")
+        requester_email = request.args.get("requesterEmail")
+        
+        if not email:
+            return jsonify({"success": False, "error": "กรุณาระบุอีเมล"}), 400
+        
+        # Check if requester is admin
+        if not admins_collection.find_one({"email": requester_email}):
+            return jsonify({"success": False, "error": "ไม่มีสิทธิ์ลบ Admin"}), 403
+        
+        # Prevent removing yourself
+        if email == requester_email:
+            return jsonify({"success": False, "error": "ไม่สามารถลบตัวเองได้"}), 400
+        
+        result = admins_collection.delete_one({"email": email})
+        
+        if result.deleted_count > 0:
+            return jsonify({
+                "success": True,
+                "message": f"ลบ Admin สำเร็จ: {email}"
+            })
+        else:
+            return jsonify({"success": False, "error": "ไม่พบอีเมลนี้"}), 404
+    
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 
 @app.route("/api/upload-slip", methods=["POST"])
 def upload_slip():

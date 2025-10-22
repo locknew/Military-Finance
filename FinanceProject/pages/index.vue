@@ -156,6 +156,80 @@
           <div v-if="deleteMessage" class="success-message">{{ deleteMessage }}</div>
           <div v-if="deleteError" class="error-message">❌ {{ deleteError }}</div>
         </div>
+
+<!-- Admin Management Section -->
+<div class="admin-section slide-up" style="margin-top: 32px; padding-top: 24px; border-top: 2px solid #e2e8f0;">
+  <div class="admin-header">
+    <h3 class="admin-title">จัดการ Admin</h3>
+    <span class="admin-badge">👥 USERS</span>
+  </div>
+
+  <!-- Current User Email -->
+  <div class="form-group">
+    <div class="success-message" style="background: #e6fffa; color: #234e52; border: 1px solid #81e6d9;">
+      👤 คุณเข้าสู่ระบบด้วย: <strong>{{ userEmail }}</strong>
+    </div>
+  </div>
+
+  <!-- Add New Admin -->
+  <div class="form-group">
+    <label class="form-label">เพิ่ม Admin ใหม่</label>
+    <input 
+      v-model="newAdminEmail" 
+      type="email"
+      placeholder="กรอกอีเมลของ Admin ใหม่" 
+      class="input"
+      @keyup.enter="addAdmin"
+    />
+  </div>
+
+  <button 
+    @click="addAdmin" 
+    class="btn" 
+    :disabled="adminManageLoading || !newAdminEmail"
+    style="background: linear-gradient(135deg, #2b6cb0 0%, #3182ce 50%, #4299e1 100%);"
+  >
+    <span v-if="adminManageLoading" class="loading"></span>
+    <span v-else>➕</span>
+    {{ adminManageLoading ? "กำลังเพิ่ม..." : "เพิ่ม Admin" }}
+  </button>
+
+  <!-- Admin List -->
+  <div v-if="adminEmails.length" class="uploaded-files-section" style="margin-top: 24px;">
+    <h4 class="files-title">รายชื่อ Admin ทั้งหมด ({{ adminEmails.length }})</h4>
+    <div class="files-list">
+      <div v-for="admin in adminEmails" :key="admin.email" class="file-item">
+        <div class="file-details">
+          <div class="file-name">
+            {{ admin.email }}
+            <span v-if="admin.email === userEmail" style="color: #48bb78; font-weight: 600;"> (คุณ)</span>
+          </div>
+          <div class="file-size" v-if="admin.addedAt">
+            เพิ่มเมื่อ: {{ new Date(admin.addedAt).toLocaleDateString('th-TH') }}
+          </div>
+        </div>
+        <div class="file-actions">
+          <button 
+            @click="removeAdmin(admin.email)" 
+            class="delete-btn" 
+            :disabled="admin.email === userEmail"
+            :title="admin.email === userEmail ? 'ไม่สามารถลบตัวเองได้' : 'ลบ Admin'"
+          >
+            🗑️
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="adminManageMessage" class="success-message" style="margin-top: 16px;">
+    {{ adminManageMessage }}
+  </div>
+  <div v-if="adminManageError" class="error-message" style="margin-top: 16px;">
+    ❌ {{ adminManageError }}
+  </div>
+</div>
+
       </div>
     </div>
   </div>
@@ -163,7 +237,6 @@
 
 <script setup>
 import { ref, onMounted, watch } from "vue";
-import { isAdmin } from "@/utils/isAdmin";
 
 const { $liff } = useNuxtApp();
 const config = useRuntimeConfig();
@@ -209,6 +282,13 @@ const userProfile = ref(null);
 // Detect mobile device
 const isMobile = ref(false);
 
+const userEmail = ref("");
+const adminEmails = ref([]);
+const newAdminEmail = ref("");
+const adminManageLoading = ref(false);
+const adminManageMessage = ref("");
+const adminManageError = ref("");
+
 // --- Constants ---
 const THAI_MONTHS = {
   "01": "มกราคม", "02": "กุมภาพันธ์", "03": "มีนาคม",
@@ -250,7 +330,6 @@ const fetchDeleteSlipCount = async () => {
 
 // --- Lifecycle ---
 onMounted(async () => {
-  // Detect mobile
   isMobile.value = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
   try {
@@ -258,16 +337,61 @@ onMounted(async () => {
     if ($liff.isLoggedIn()) {
       isLoggedIn.value = true;
       userProfile.value = await $liff.getProfile();
-      if (isAdmin(userProfile.value.userId)) {
-        isAdminUser.value = true;
-        await loadUploadedFiles();
+      
+      // Get ID token and decode to get email
+      const idToken = $liff.getIDToken();
+      if (idToken) {
+        try {
+          // Decode JWT token (simple base64 decode of payload)
+          const payload = JSON.parse(atob(idToken.split('.')[1]));
+          userEmail.value = payload.email || "";
+          
+          // Check if user is admin using email
+          if (userEmail.value) {
+            await checkAdminStatus();
+          }
+        } catch (e) {
+          console.error("Failed to decode token:", e);
+        }
       }
+      
       await fetchAvailableMonths();
     }
   } catch (e) {
     console.error("LIFF init failed:", e);
   }
 });
+
+// New function to check admin status
+const checkAdminStatus = async () => {
+  try {
+    const data = await api("/admin/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: userEmail.value })
+    });
+    
+    if (data.success && data.isAdmin) {
+      isAdminUser.value = true;
+      await loadUploadedFiles();
+      await loadAdminList();
+    }
+  } catch (e) {
+    console.error("checkAdminStatus:", e);
+  }
+};
+
+// New function to load admin list
+const loadAdminList = async () => {
+  try {
+    const data = await api("/admin/list");
+    if (data.success) {
+      adminEmails.value = data.admins || [];
+    }
+  } catch (e) {
+    console.error("loadAdminList:", e);
+  }
+};
 
 // --- Watchers ---
 watch(selectedYear, (y) => {
@@ -489,6 +613,81 @@ const viewFile = async (file) => {
     }
   } catch (e) { alert("ดูไฟล์ผิดพลาด"); }
   finally { loading.value = false; }
+};
+
+// New function to add admin
+const addAdmin = async () => {
+  if (!newAdminEmail.value || !newAdminEmail.value.includes('@')) {
+    adminManageError.value = "กรุณาระบุอีเมลที่ถูกต้อง";
+    return;
+  }
+  
+  adminManageLoading.value = true;
+  adminManageMessage.value = "";
+  adminManageError.value = "";
+  
+  try {
+    const data = await api("/admin/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        email: newAdminEmail.value,
+        requesterEmail: userEmail.value
+      })
+    });
+    
+    if (data.success) {
+      adminManageMessage.value = data.message;
+      newAdminEmail.value = "";
+      await loadAdminList();
+      
+      setTimeout(() => {
+        adminManageMessage.value = "";
+      }, 3000);
+    } else {
+      throw new Error(data.error);
+    }
+  } catch (e) {
+    adminManageError.value = e.message;
+    setTimeout(() => {
+      adminManageError.value = "";
+    }, 3000);
+  } finally {
+    adminManageLoading.value = false;
+  }
+};
+
+// New function to remove admin
+const removeAdmin = async (email) => {
+  if (!confirm(`คุณแน่ใจว่าจะลบ Admin: ${email}?`)) return;
+  
+  adminManageLoading.value = true;
+  adminManageMessage.value = "";
+  adminManageError.value = "";
+  
+  try {
+    const data = await api(`/admin/remove?email=${email}&requesterEmail=${userEmail.value}`, {
+      method: "DELETE"
+    });
+    
+    if (data.success) {
+      adminManageMessage.value = data.message;
+      await loadAdminList();
+      
+      setTimeout(() => {
+        adminManageMessage.value = "";
+      }, 3000);
+    } else {
+      throw new Error(data.error);
+    }
+  } catch (e) {
+    adminManageError.value = e.message;
+    setTimeout(() => {
+      adminManageError.value = "";
+    }, 3000);
+  } finally {
+    adminManageLoading.value = false;
+  }
 };
 </script>
 
