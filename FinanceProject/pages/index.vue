@@ -327,8 +327,33 @@ const fetchDeleteSlipCount = async () => {
     deleteSlipCount.value = 0;
   }
 };
+// Helper function to decode JWT
+const decodeJWT = (token) => {
+  try {
+    // Get the payload part (second part of JWT)
+    const base64Url = token.split('.')[1];
+    
+    // Replace URL-safe characters
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    
+    // Decode base64 to string
+    const jsonPayload = decodeURIComponent(
+      window.atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.error("JWT decode error:", error);
+    return null;
+  }
+};
 
-// --- Lifecycle ---
+// ... rest of your state variables
+
+// Then in onMounted, use it like this:
 onMounted(async () => {
   isMobile.value = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
@@ -341,18 +366,19 @@ onMounted(async () => {
       // Get ID token and decode to get email
       const idToken = $liff.getIDToken();
       if (idToken) {
-        try {
-          // Decode JWT token (simple base64 decode of payload)
-          const payload = JSON.parse(atob(idToken.split('.')[1]));
-          userEmail.value = payload.email || "";
+        const payload = decodeJWT(idToken);
+        
+        if (payload && payload.email) {
+          userEmail.value = payload.email;
+          console.log("User email:", userEmail.value);
           
           // Check if user is admin using email
-          if (userEmail.value) {
-            await checkAdminStatus();
-          }
-        } catch (e) {
-          console.error("Failed to decode token:", e);
+          await checkAdminStatus();
+        } else {
+          console.warn("No email found in token");
         }
+      } else {
+        console.warn("No ID token available");
       }
       
       await fetchAvailableMonths();
